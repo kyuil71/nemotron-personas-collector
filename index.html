@@ -93,10 +93,14 @@ a{color:inherit}[hidden]{display:none!important}
 
 /* ── 선택 카드 ── */
 .country-list,.size-list{display:grid;gap:12px}
-.country-card{display:grid;grid-template-columns:52px 1fr 28px;align-items:center;gap:14px;width:100%;padding:17px 18px;border:2px solid var(--s100);border-radius:22px;text-align:left;background:#fff;transition:.16s}
+.country-card{display:grid;grid-template-columns:56px 1fr 28px;align-items:center;gap:14px;width:100%;padding:17px 18px;border:2px solid var(--s100);border-radius:22px;text-align:left;background:#fff;transition:.16s}
 .country-card:hover{border-color:var(--s300)}
 .country-card.selected{border-color:var(--blue);background:var(--blue-soft);box-shadow:0 8px 22px #2563eb1c}
-.country-flag{font-size:36px;line-height:1;text-align:center}
+.country-mark{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;width:56px;min-width:56px}
+.country-code{display:block;color:var(--s700);font-size:14px;font-weight:900;line-height:1;letter-spacing:.08em;text-align:center}
+.country-card.selected .country-code{color:var(--blue)}
+.country-flag-img{display:block;width:34px;height:23px;object-fit:cover;border:1px solid #0f172a14;border-radius:4px;box-shadow:0 2px 6px #0f172a18}
+.country-flag-fallback{display:none;font-size:29px;line-height:1;text-align:center}
 .country-card h3{margin:0 0 4px;font-size:21px;font-weight:900;letter-spacing:-.02em}
 .country-card p{margin:0;color:var(--s500);font-size:16px;font-weight:600;word-break:break-all}
 .check-dot{display:grid;place-items:center;width:28px;height:28px;border:2px solid var(--s300);border-radius:50%;color:#fff}
@@ -1068,7 +1072,7 @@ function renderIntro(app) {
   app.innerHTML = `<div class="screen api-screen fade-in">
     <div class="hero-icon"><i data-lucide="users-round"></i></div>
     <h1 class="hero-title">Persona<br>Collector</h1>
-    <p class="hero-subtitle">6개 국가 NVIDIA Nemotron-Personas 데이터를<br>먼저 모은 다음, 프로필과 키워드로 골라 냅니다.<br><b>API 키가 필요 없습니다.</b></p>
+    <p class="hero-subtitle">6개 국가 NVIDIA Nemotron-Personas 데이터를<br>먼저 모은 다음, 프로필과 키워드로 골라 냅니다.</p>
     <button class="btn btn-primary btn-full" id="startButton">시작하기 <i data-lucide="arrow-right"></i></button>
     <button class="btn btn-outline btn-full" id="openButton" style="margin-top:10px"><i data-lucide="folder-open"></i> 저장한 작업 열기</button>
     <input id="projectInput" type="file" accept="application/json,.json" hidden>
@@ -1083,7 +1087,11 @@ function renderIntro(app) {
 function renderCountry(app) {
   const cards = COUNTRIES.map(c => `
     <button class="country-card ${state.country?.id === c.id ? 'selected' : ''}" data-country="${c.id}">
-      <span class="country-flag">${c.flag}</span>
+      <span class="country-mark">
+        <span class="country-code">${c.id.toUpperCase()}</span>
+        <img class="country-flag-img" src="https://flagcdn.com/w40/${c.id}.png" srcset="https://flagcdn.com/w80/${c.id}.png 2x" alt="${esc(c.name)} 국기" loading="lazy" onerror="this.style.display='none';this.nextElementSibling.style.display='block'">
+        <span class="country-flag-fallback" aria-hidden="true">${c.flag}</span>
+      </span>
       <span><h3>${esc(c.name)}</h3><p>${esc(c.dataset.replace('nvidia/', ''))}</p></span>
       <span class="check-dot"><i data-lucide="check"></i></span>
     </button>`).join('');
