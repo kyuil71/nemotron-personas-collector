@@ -27,7 +27,7 @@
   --warn:#8a4b09; --warn-bg:#fffbeb;
   --frame:430px; --ease:cubic-bezier(.22,1,.36,1);
 }
-*{box-sizing:border-box} html{background:var(--s50)}
+*{box-sizing:border-box} html{background:var(--s50);overscroll-behavior-y:none}
 body{margin:0;min-height:100vh;min-height:100dvh;background:var(--s50);color:var(--s900);
   font:17px/1.62 Pretendard,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
   -webkit-font-smoothing:antialiased;-webkit-tap-highlight-color:transparent;overscroll-behavior-y:none}
@@ -1614,28 +1614,28 @@ window.addEventListener('beforeunload', e => {
 document.addEventListener('keydown', e => { if (e.key === 'Escape') closeSheet(); });
 
 /* =========================================================
-   스마트폰 전체 화면 (Trend Insight Lab과 동일한 방식)
-   브라우저는 사용자 터치 없이 전체 화면 전환을 허용하지 않으므로,
-   화면을 처음 터치하는 순간 전체 화면으로 전환합니다.
-   (파일 선택·저장 창 등으로 전체 화면이 풀리면 다음 터치 때 다시 전환)
+   당겨서 새로고침 막기
+   화면 맨 위에서 아래로 쓸어내릴 때 브라우저가 새로고침하지 않도록 합니다.
+   (안쪽에 스크롤 가능한 영역이 위로 더 올라갈 수 있으면 그 스크롤은 그대로 둡니다)
    ========================================================= */
-(function setupMobileFullscreen() {
-  const isMobile = window.matchMedia("(pointer: coarse)").matches || /Android|iPhone|iPad|Mobile/i.test(navigator.userAgent);
-  const standalone = window.matchMedia("(display-mode: fullscreen), (display-mode: standalone)").matches || navigator.standalone;
-  if (!isMobile || standalone) return;
-  const root = document.documentElement;
-  const request = root.requestFullscreen || root.webkitRequestFullscreen;
-  if (!request) return;   // 아이폰은 웹페이지 전체 화면 미지원(iPad만 지원) → '홈 화면에 추가'로 주소창 없이 실행
-  const isFull = () => !!(document.fullscreenElement || document.webkitFullscreenElement);
-  const enter = () => {
-    if (isFull()) return;
-    try {
-      const r = request.call(root, { navigationUI: "hide" });
-      if (r && r.catch) r.catch(() => {});
-    } catch (e) { /* 무시 */ }
-  };
-  document.addEventListener("click", enter, true);
-  document.addEventListener("touchend", enter, { capture: true, passive: true });
+(function blockPullToRefresh() {
+  let startY = 0;
+  document.addEventListener("touchstart", e => {
+    if (e.touches.length === 1) startY = e.touches[0].clientY;
+  }, { passive: true });
+  document.addEventListener("touchmove", e => {
+    if (e.touches.length !== 1) return;
+    const dy = e.touches[0].clientY - startY;
+    if (dy <= 0) return;   // 위로 쓸어올리기는 그대로
+    for (let el = e.target; el && el !== document.body && el !== document.documentElement; el = el.parentElement) {
+      if (el.scrollTop > 0) {
+        const oy = getComputedStyle(el).overflowY;
+        if (oy === "auto" || oy === "scroll") return;   // 안쪽 영역이 스크롤 중
+      }
+    }
+    const pageTop = (document.scrollingElement || document.documentElement).scrollTop <= 0;
+    if (pageTop && e.cancelable) e.preventDefault();
+  }, { passive: false });
 })();
 
 render();
