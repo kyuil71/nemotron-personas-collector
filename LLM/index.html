@@ -271,6 +271,19 @@ details.more[open] summary:before{content:"－ "}
 .phase.done{color:var(--success)}
 .phase svg{width:19px;height:19px}
 .persona-card h3 .score-badge{flex:0 0 auto;min-width:auto}
+.saved-list{display:grid;gap:10px}
+.saved-list:empty{display:none}
+.saved-row{display:grid;grid-template-columns:1fr 46px;gap:8px;align-items:stretch}
+.saved-card{display:grid;grid-template-columns:38px 1fr 22px;align-items:center;gap:12px;width:100%;min-width:0;padding:14px 15px;border:2px solid var(--s100);border-radius:20px;text-align:left;background:#fff;transition:.15s}
+.saved-card:hover{border-color:var(--blue);background:var(--blue-soft)}
+.saved-card .country-flag-emoji{width:38px;height:38px}
+.saved-card b{display:block;font-size:19px;font-weight:900;letter-spacing:-.02em}
+.saved-card strong{color:var(--blue)}
+.saved-card em{display:block;margin-top:2px;color:var(--s500);font-size:16px;font-weight:650;font-style:normal;line-height:1.5;overflow-wrap:anywhere;word-break:break-all}
+.saved-card > span:nth-child(2){min-width:0}
+.saved-card > svg{width:20px;height:20px;color:var(--s400)}
+.saved-del{display:grid;place-items:center;border:2px solid var(--s100);border-radius:16px;color:var(--s400);background:#fff}
+.saved-del svg{width:20px;height:20px}
 </style>
 </head>
 <body>
@@ -444,6 +457,8 @@ const state = {
   kChoice: 'auto', clusters: [], activeCluster: null, scatter: null,
   previewLimit: PREVIEW_STEP,
   modelCached: null,
+  imports: null,         // 불러온 수집 파일 목록 [{ id, fileName, country, split, count, ... }]
+  importing: false,
   ai: { phase: '', dlLoaded: 0, dlTotal: 0, done: 0, todo: 0, startAt: 0 },
   busy: false, progress: 0, progressText: '', progressSub: '',
   controller: null, cancelRequested: false,
@@ -1296,6 +1311,166 @@ async function checkModelCache() {
   } catch { /* 확인 불가 */ }
 }
 
+// ---- 불러온 수집 파일 보관 (목록이 새로고침 뒤에도 남도록) ------------------
+const IMPORT_DB = 'persona-ai-imports';
+let impDbPromise = null;
+function impDb() {
+  if (impDbPromise) return impDbPromise;
+  impDbPromise = new Promise(resolve => {
+    try {
+      if (typeof indexedDB === 'undefined') return resolve(null);
+      const req = indexedDB.open(IMPORT_DB, 1);
+      req.onupgradeneeded = () => {
+        const db = req.result;
+        if (!db.objectStoreNames.contains('meta')) db.createObjectStore('meta');
+        if (!db.objectStoreNames.contains('rows')) db.createObjectStore('rows');
+      };
+      req.onsuccess = () => resolve(req.result);
+      req.onerror = () => resolve(null);
+      req.onblocked = () => resolve(null);
+    } catch { resolve(null); }
+  });
+  return impDbPromise;
+}
+async function impGet(store, key) {
+  const db = await impDb();
+  if (!db) return null;
+  return new Promise(resolve => {
+    try {
+      const q = db.transaction(store, 'readonly').objectStore(store).get(key);
+      q.onsuccess = () => resolve(q.result ?? null);
+      q.onerror = () => resolve(null);
+    } catch { resolve(null); }
+  });
+}
+async function impAllMeta() {
+  const db = await impDb();
+  if (!db) return [];
+  return new Promise(resolve => {
+    try {
+      const q = db.transaction('meta', 'readonly').objectStore('meta').getAll();
+      q.onsuccess = () => resolve(q.result || []);
+      q.onerror = () => resolve([]);
+    } catch { resolve([]); }
+  });
+}
+async function impWrite(ops) {
+  const db = await impDb();
+  if (!db) return false;
+  return new Promise(resolve => {
+    try {
+      const tx = db.transaction(['meta', 'rows'], 'readwrite');
+      for (const [store, key, value] of ops) {
+        if (value === undefined) tx.objectStore(store).delete(key);
+        else tx.objectStore(store).put(value, key);
+      }
+      tx.oncomplete = () => resolve(true);
+      tx.onerror = tx.onabort = () => resolve(false);
+    } catch { resolve(false); }
+  });
+}
+const importRowsMem = new Map();   // 저장소를 못 쓸 때를 대비한 메모리 보관
+async function refreshImports() {
+  const list = await impAllMeta();
+  const mem = [...importRowsMem.keys()].map(id => state.imports?.find(m => m.id === id)).filter(Boolean);
+  const byId = new Map([...mem, ...list].map(m => [m.id, m]));
+  state.imports = [...byId.values()].sort((a, b) => String(b.loadedAt).localeCompare(String(a.loadedAt)));
+  if (state.screen === 'country') render();
+}
+function readFileAs(file, kind) {
+  return new Promise((resolve, reject) => {
+    const r = new FileReader();
+    r.onload = () => resolve(r.result);
+    r.onerror = () => reject(r.error || new Error('read'));
+    if (kind === 'buffer') r.readAsArrayBuffer(file); else r.readAsText(file, 'utf-8');
+  });
+}
+async function parseCollectionFile(file) {
+  const isExcel = /\.xlsx?$/i.test(file.name || '') || /spreadsheet|excel/i.test(file.type || '');
+  const data = isExcel
+    ? readExcelProject(new Uint8Array(await readFileAs(file, 'buffer')))
+    : JSON.parse(String(await readFileAs(file, 'text') || '{}'));
+  const country = COUNTRIES.find(c => c.id === data.country) || COUNTRIES.find(c => c.dataset === data.dataset);
+  if (!country) throw new Error('어느 나라 데이터인지 알 수 없습니다.');
+  if (!Array.isArray(data.rows) || !data.rows.length) throw new Error('사람 데이터가 없습니다.');
+  return { data: { ...data, country: country.id, dataset: country.dataset }, country };
+}
+// 다운로드 폴더에서 파일 고르기 (지원하는 브라우저는 다운로드 폴더에서 바로 열림)
+async function pickCollectionFiles() {
+  if (typeof window.showOpenFilePicker === 'function') {
+    try {
+      const handles = await window.showOpenFilePicker({
+        multiple: true, startIn: 'downloads', id: 'persona-collections',
+        types: [{ description: '수집 데이터 (작업 파일 · 엑셀)', accept: {
+          'application/json': ['.json'],
+          'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': ['.xlsx'],
+          'application/vnd.ms-excel': ['.xls'],
+        } }],
+      });
+      importCollectionFiles(await Promise.all(handles.map(h => h.getFile())));
+      return;
+    } catch (e) {
+      if (e && e.name === 'AbortError') return;   // 사용자가 닫음
+    }
+  }
+  $('#importInput')?.click();
+}
+async function importCollectionFiles(files) {
+  files = [...(files || [])];
+  if (!files.length || state.importing) return;
+  state.importing = true;
+  if (state.screen === 'country') render();
+  const added = [], failed = [];
+  for (const file of files) {
+    try {
+      const { data, country } = await parseCollectionFile(file);
+      const rows = data.rows;
+      const id = `${data.dataset}|${data.split || 'train'}|${file.name}|${rows.length}`;
+      const meta = {
+        id, fileName: file.name || '이름 없는 파일', country: country.id, dataset: country.dataset,
+        config: data.config || 'default', split: data.split || 'train',
+        splits: Array.isArray(data.splits) ? data.splits : null,
+        total: data.total ?? null, avgRowBytes: data.avgRowBytes ?? null, nextOffset: data.nextOffset ?? null,
+        allColumns: data.allColumns || null, query: data.query || '', count: rows.length,
+        loadedAt: new Date().toISOString(),
+      };
+      const saved = await impWrite([['rows', id, rows], ['meta', id, meta]]);
+      if (!saved) importRowsMem.set(id, rows);
+      state.imports = [meta, ...(state.imports || []).filter(m => m.id !== id)];
+      added.push(`${country.name} ${formatN(rows.length)}명`);
+    } catch (e) {
+      failed.push(file.name || '파일');
+    }
+  }
+  state.importing = false;
+  try { navigator.storage?.persist?.(); } catch { /* noop */ }
+  state.error = failed.length ? `읽지 못한 파일: ${failed.join(', ')} — 이 프로그램이나 키워드 버전에서 저장한 작업 파일(.json) · 엑셀(.xlsx)인지 확인해 주세요.` : '';
+  state.notice = added.length ? `불러왔습니다 — ${added.join(' · ')}. 목록에서 분석할 데이터를 고르세요.` : '';
+  state.noticeType = 'success';
+  await refreshImports();
+  render();
+}
+async function openImport(id) {
+  if (state.busy) return;
+  const meta = (state.imports || []).find(m => m.id === id);
+  const rows = importRowsMem.get(id) || await impGet('rows', id);
+  if (!meta || !Array.isArray(rows) || !rows.length) { toast('이 데이터를 읽지 못했습니다. 파일을 다시 불러와 주세요.'); return; }
+  try {
+    const country = applyLoaded({ ...meta, rows, splits: meta.splits || undefined });
+    state.notice = `${meta.fileName} — ${country.name} ${formatN(rows.length)}명을 불러왔습니다. 이제 찾고 싶은 사람을 문장으로 설명해 보세요.`;
+    state.noticeType = 'success';
+    state.screen = 'result';
+    render();
+    checkModelCache();
+  } catch { toast('이 데이터를 열 수 없습니다.'); }
+}
+async function removeImport(id) {
+  importRowsMem.delete(id);
+  await impWrite([['rows', id, undefined], ['meta', id, undefined]]);
+  state.imports = (state.imports || []).filter(m => m.id !== id);
+  render();
+}
+
 // ---- 분석 결과 보관 (IndexedDB) ---------------------------------------
 let idbPromise = null;
 function idb() {
@@ -1795,46 +1970,72 @@ function saveProject() {
   URL.revokeObjectURL(url);
   toast('작업 파일을 저장했습니다.');
 }
+function applyLoaded(data) {
+  const country = COUNTRIES.find(c => c.id === data.country) || COUNTRIES.find(c => c.dataset === data.dataset);
+  if (!country) throw new Error('country');
+  state.country = country;
+  state.config = data.config || 'default';
+  state.split = data.split || 'train';
+  state.splits = Array.isArray(data.splits) && data.splits.length ? data.splits : [{ config: state.config, split: state.split }];
+  state.total = data.total ?? null;
+  state.avgRowBytes = Number(data.avgRowBytes) || DEFAULT_ROW_BYTES;
+  state.nextOffset = data.nextOffset ?? null;
+  if (TARGET_OPTIONS.includes(Number(data.target))) state.target = Number(data.target);
+  if (data.randomStart != null) state.randomStart = Boolean(data.randomStart);
+  state.query = data.query || '';
+  if (data.pick != null) state.pick = data.pick === 'auto' || !PICK_OPTIONS.includes(Number(data.pick)) ? 'auto' : Number(data.pick);
+  if (data.kChoice != null) state.kChoice = data.kChoice === 'auto' || !K_OPTIONS.includes(Number(data.kChoice)) ? 'auto' : Number(data.kChoice);
+  state.hintsOff = new Set(Array.isArray(data.hintsOff) ? data.hintsOff : []);
+  state.category = data.category && typeof data.category === 'object' ? data.category : {};
+  state.ranges = data.ranges && typeof data.ranges === 'object' ? data.ranges : {};
+  state.allColumns = Array.isArray(data.allColumns) && data.allColumns.length ? data.allColumns : orderColumns(Object.keys(data.rows?.[0] || {}));
+  state.rows = Array.isArray(data.rows) ? data.rows : [];
+  state.filterFields = buildFieldsFromRows(state.rows);
+  pruneConditions();
+  clearAnalysis();
+  state.previewLimit = PREVIEW_STEP;
+  state.error = '';
+  return country;
+}
+// 엑셀(이 프로그램이나 키워드 버전에서 저장한 파일)을 원래 열 이름으로 되돌려 읽는다
+const LABEL_TO_COL = (() => {
+  const m = new Map();
+  for (const [col, label] of Object.entries(LABELS)) if (!m.has(label)) m.set(label, col);
+  return m;
+})();
+const EXCEL_SKIP = new Set(['이름', '관련도', '군집', '군집 특징']);
+function readExcelProject(buffer) {
+  if (typeof XLSX === 'undefined') throw new Error('엑셀 라이브러리를 불러오지 못했습니다.');
+  const wb = XLSX.read(buffer, { type: 'array' });
+  const metaWs = wb.Sheets.meta;
+  const meta = {};
+  if (metaWs) for (const [k, v] of XLSX.utils.sheet_to_json(metaWs, { header: 1, defval: '' })) meta[String(k).trim()] = String(v).trim();
+  const country = COUNTRIES.find(c => c.dataset === meta['데이터셋']) || COUNTRIES.find(c => c.name === meta['국가']);
+  if (!country) throw new Error('country');
+  const [config, split] = (meta['config / split'] || 'default / train').split('/').map(x => x.trim());
+  const ws = wb.Sheets.personas || wb.Sheets[wb.SheetNames[0]];
+  const aoa = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '' });
+  const header = (aoa[0] || []).map(h => String(h).trim());
+  const cols = header.map(h => (EXCEL_SKIP.has(h) ? null : LABEL_TO_COL.get(h) || h.toLowerCase().replace(/\s+/g, '_')));
+  const rows = [];
+  for (const line of aoa.slice(1)) {
+    const row = {};
+    let filled = false;
+    cols.forEach((c, i) => { if (c && line[i] !== '' && line[i] != null) { row[c] = line[i]; filled = true; } });
+    if (filled) rows.push(row);
+  }
+  return { country: country.id, dataset: country.dataset, config: config || 'default', split: split || 'train', rows, allColumns: orderColumns(cols.filter(Boolean)) };
+}
 function openProjectFile(file) {
   if (!file) return;
-  const reader = new FileReader();
-  reader.onload = () => {
-    try {
-      const data = JSON.parse(String(reader.result || '{}'));
-      const country = COUNTRIES.find(c => c.id === data.country) || COUNTRIES.find(c => c.dataset === data.dataset);
-      if (!country) throw new Error('country');
-      state.country = country;
-      state.config = data.config || 'default';
-      state.split = data.split || 'train';
-      state.splits = Array.isArray(data.splits) && data.splits.length ? data.splits : [{ config: state.config, split: state.split }];
-      state.total = data.total ?? null;
-      state.avgRowBytes = Number(data.avgRowBytes) || DEFAULT_ROW_BYTES;
-      state.nextOffset = data.nextOffset ?? null;
-      state.target = TARGET_OPTIONS.includes(Number(data.target)) ? Number(data.target) : 1000;
-      state.randomStart = Boolean(data.randomStart);
-      state.query = data.query || data.include || '';
-      state.pick = PICK_OPTIONS.includes(data.pick) || PICK_OPTIONS.includes(Number(data.pick)) ? (data.pick === 'auto' ? 'auto' : Number(data.pick)) : 'auto';
-      state.kChoice = K_OPTIONS.includes(data.kChoice) || K_OPTIONS.includes(Number(data.kChoice)) ? (data.kChoice === 'auto' ? 'auto' : Number(data.kChoice)) : 'auto';
-      state.hintsOff = new Set(Array.isArray(data.hintsOff) ? data.hintsOff : []);
-      state.category = data.category && typeof data.category === 'object' ? data.category : {};
-      state.ranges = data.ranges && typeof data.ranges === 'object' ? data.ranges : {};
-      if (Array.isArray(data.allColumns) && data.allColumns.length) state.allColumns = data.allColumns;
-      state.rows = Array.isArray(data.rows) ? data.rows : [];
-      state.filterFields = buildFieldsFromRows(state.rows);
-      pruneConditions();
-      clearAnalysis();
-      state.previewLimit = PREVIEW_STEP;
-      state.error = '';
-      state.notice = `저장된 작업을 열었습니다 — ${country.name} · ${formatN(state.rows.length)}명. 'AI로 골라내기'를 눌러 이어서 분석하세요.`;
-      state.noticeType = 'success';
-      state.screen = state.rows.length ? 'result' : 'size';
-      render();
-      checkModelCache();
-    } catch {
-      toast('작업 파일을 열 수 없습니다.');
-    }
-  };
-  reader.readAsText(file, 'utf-8');
+  parseCollectionFile(file).then(({ data, country }) => {
+    applyLoaded(data);
+    state.notice = `${file.name} — ${country.name} ${formatN(state.rows.length)}명을 불러왔습니다.`;
+    state.noticeType = 'success';
+    state.screen = 'result';
+    render();
+    checkModelCache();
+  }).catch(() => toast('파일을 열 수 없습니다.'));
 }
 
 // ---- 화면 공통 --------------------------------------------------------
@@ -1901,13 +2102,11 @@ function renderIntro(app) {
     <h1 class="hero-title">Persona<br>AI Finder</h1>
     <p class="hero-subtitle">6개 나라 Nemotron 페르소나를 모은 다음,<br>찾고 싶은 사람을 <b>문장으로 설명</b>하면<br>AI가 골라내고 비슷한 사람끼리 묶어 줍니다.</p>
     <button class="btn btn-primary btn-full" id="startButton">시작하기 <i data-lucide="arrow-right"></i></button>
-    <button class="btn btn-outline btn-full" id="openButton" style="margin-top:10px"><i data-lucide="folder-open"></i> 저장한 작업 열기</button>
-    <input id="projectInput" type="file" accept="application/json,.json" hidden>
+    <button class="btn btn-outline btn-full" id="openButton" style="margin-top:10px"><i data-lucide="folder-open"></i> 기존 수집 데이터 불러오기</button>
     <p class="foot-note">AI 모델 · multilingual-e5-small (MIT) — 처음 1회 약 ${MODEL_MB}MB를 받아 휴대폰 안에서 실행합니다. 모은 데이터는 밖으로 보내지 않습니다.<br>데이터 출처 · NVIDIA Nemotron-Personas (CC BY 4.0) · 통계 기반 합성 데이터<br><a href="../">키워드 검색 버전 열기</a></p>
   </div>`;
   $('#startButton').onclick = () => { state.screen = 'country'; render(); };
-  $('#openButton').onclick = () => $('#projectInput').click();
-  $('#projectInput').onchange = e => openProjectFile(e.target.files?.[0]);
+  $('#openButton').onclick = () => { state.screen = 'country'; render(); requestAnimationFrame(() => $('#importHeading')?.scrollIntoView({ block: 'start' })); };
 }
 
 // ---- 화면: 국가 선택 --------------------------------------------------
@@ -1928,11 +2127,37 @@ function renderCountry(app) {
       <p class="body-copy">AI가 6개 나라 말을 모두 이해합니다. 페르소나가 영어·일본어·프랑스어·포르투갈어·힌디어로 되어 있어도 <b>한국어 문장으로 찾을 수 있습니다.</b></p>
     </div>
     <div class="country-list">${cards}</div>
+
+    <h2 class="section-heading" id="importHeading">기존 수집 데이터</h2>
+    <p class="body-copy">예전에 모아서 저장한 파일(작업 파일 .json · 엑셀 .xlsx)을 다운로드 폴더에서 불러옵니다. 여러 개를 불러오면 아래에 쌓이고, 하나를 고르면 <b>바로 AI 분석</b>으로 넘어갑니다.</p>
+    <button class="btn btn-dark btn-full" id="importButton" style="margin-top:14px" ${state.importing ? 'disabled' : ''}><i data-lucide="folder-down"></i> ${state.importing ? '불러오는 중…' : '기존 수집 데이터 불러오기'}</button>
+    <input id="importInput" type="file" multiple accept="application/json,.json,.xlsx,.xls,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" hidden>
+    <div class="saved-list" style="margin-top:14px">${importListHtml()}</div>
     <p class="foot-note">각 데이터셋은 Hugging Face에 공개되어 있으며 별도 로그인 없이 사용합니다.</p>`;
   app.innerHTML = screenShell('country', content);
   app.querySelectorAll('[data-country]').forEach(btn => {
     btn.onclick = () => selectCountry(COUNTRIES.find(c => c.id === btn.dataset.country));
   });
+  $('#importButton').onclick = pickCollectionFiles;
+  $('#importInput').onchange = e => { const files = [...(e.target.files || [])]; e.target.value = ''; importCollectionFiles(files); };
+  app.querySelectorAll('[data-import]').forEach(btn => { btn.onclick = () => openImport(btn.dataset.import); });
+  app.querySelectorAll('[data-import-del]').forEach(btn => { btn.onclick = () => removeImport(btn.dataset.importDel); });
+  if (state.imports == null) refreshImports();
+}
+function importListHtml() {
+  return (state.imports || []).map(m => {
+    const c = COUNTRIES.find(x => x.id === m.country);
+    if (!c) return '';
+    const lang = SPLIT_INFO[m.split] ? ' · ' + splitLabel(m) : '';
+    return `<div class="saved-row">
+      <button class="saved-card" data-import="${esc(m.id)}">
+        <span class="country-flag-emoji">${countryFlagIcon(c.id)}</span>
+        <span><b>${esc(c.name)}${esc(lang)} <strong>${formatN(m.count)}명</strong></b><em>${esc(m.fileName)}</em></span>
+        <i data-lucide="chevron-right"></i>
+      </button>
+      <button class="saved-del" data-import-del="${esc(m.id)}" aria-label="목록에서 빼기"><i data-lucide="x"></i></button>
+    </div>`;
+  }).join('');
 }
 function resetForCountry() {
   resetConditions();
@@ -2291,7 +2516,7 @@ function renderResult(app) {
         <button class="btn btn-outline btn-small" id="openProjectButton"><i data-lucide="folder-open"></i> 작업 열기</button>
       </div>
     </div>
-    <input id="projectInput" type="file" accept="application/json,.json" hidden>
+    <input id="projectInput" type="file" accept="application/json,.json,.xlsx,.xls,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" hidden>
     <p class="helper">작업 파일에는 모은 사람과 문장 · 조건이 들어갑니다. AI 분석 결과는 이 브라우저에 따로 저장되어 다시 열면 바로 이어집니다.</p>`;
 
   const est = estimateFor(state.target);
@@ -2637,7 +2862,7 @@ document.addEventListener('keydown', e => { if (e.key === 'Escape') closeSheet()
 })();
 
 // 테스트용 진입점 (화면에는 영향 없음)
-window.__personaAI = { state, parseHints, kmeans, chooseK, rowTokens, clusterTerms, passageText, workerCode };
+window.__personaAI = { state, importCollectionFiles, parseHints, kmeans, chooseK, rowTokens, clusterTerms, passageText, workerCode };
 
 render();
 })();
