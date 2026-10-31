@@ -247,6 +247,11 @@ details.more[open] summary:before{content:"－ "}
 .hint-chip{display:inline-flex;align-items:center;gap:6px;padding:8px 13px;border:1.5px solid var(--blue);border-radius:999px;color:#1a4bc4;background:var(--blue-soft);font-size:16px;font-weight:800}
 .hint-chip.off{border-color:var(--s200);color:var(--s400);background:#fff;text-decoration:line-through}
 .hint-chip svg{width:16px;height:16px}
+.hint-chip.soft{border-style:dashed;border-color:var(--s300);color:var(--s500);background:#fff}
+.hint-details{flex:1 0 100%;display:grid;gap:4px;margin-top:2px}
+.hint-detail{color:var(--s600);font-size:16px;font-weight:650;line-height:1.5}
+.hint-detail b{color:var(--blue);font-weight:850;margin-right:4px}
+.hint-detail.warn{color:var(--warn)}
 .btn-ai{color:#fff;background:linear-gradient(135deg,#1e3a8a,#4f46e5);box-shadow:0 10px 26px #4f46e540}
 .score-badge{flex:0 0 auto;padding:3px 10px;border-radius:999px;background:#eef2ff;color:#4338ca;font-size:16px;font-weight:900;line-height:1.5}
 .cl-tag{display:inline-flex;align-items:center;gap:6px;min-height:30px;padding:4px 11px;border-radius:999px;background:var(--s100);color:var(--s700);font-size:16px;font-weight:800}
@@ -415,6 +420,7 @@ const NAME_PARTICLES = new Set(['de','da','do','dos','das','del','della','van','
 const QUERY_EXAMPLES = [
   '새로운 기술을 빨리 받아들이는 30대 직장인',
   '혼자 사는 60대 이상, 건강 관리에 관심이 많은 사람',
+  '70대 이상 남자, 혼자 살고 대학교 이상 졸업한 사람',
   '아이를 키우며 일하는 여성',
   '요리와 여행을 즐기는 사람',
   '디자인이나 예술 분야에서 일하는 사람',
@@ -456,7 +462,7 @@ const state = {
   nextOffset: null,
   rows: [],
   filterFields: [], category: {}, ranges: {},
-  query: '', hintsOff: new Set(), pick: 'auto',
+  query: '', hintsOff: new Set(), pick: 'auto', conditionOnly: false,
   picked: null,           // [{ row, score, rel, cluster }]
   lastQuery: '', lastHints: [],
   kChoice: 'auto', clusters: [], activeCluster: null, scatter: null,
@@ -962,52 +968,37 @@ function resetConditions() { state.category = {}; state.ranges = {}; }
  * AI 임베딩은 숫자에 약하므로, 명확한 나이 · 성별은 데이터 값으로 정확히 거른다.
  * =================================================================== */
 const FR_DECADES = { vingt: 20, trent: 30, quarant: 40, cinquant: 50, soixant: 60, septant: 70 };
-function parseHints(text) {
-  const t = String(text || '').normalize('NFKC');
-  const low = t.toLowerCase();
-  let min = null, max = null;
-  const num = s => Number(s);
-  const decadeOf = d => (d >= 10 ? d : d * 10);
-  let m;
-
-  // 범위: 30~45세 · 30-40살 · 25〜34歳 · aged 30 to 40 · between 30 and 40 · entre 30 et 40 ans · 30~40대
-  if ((m = low.match(/(\d{1,2})0\s*(?:~|-|–|〜|～)\s*(\d{1,2})0\s*(?:대|代)/))) {
-    min = num(m[1]) * 10; max = num(m[2]) * 10 + 9;
-  } else if ((m = low.match(/(\d{1,3})\s*(?:세|살|歳|years?|yrs?|ans|anos|वर्ष|साल)?\s*(?:~|-|–|〜|～|to)\s*(\d{1,3})\s*(?:세|살|歳|years?|yrs?|ans|anos|वर्ष|साल)/))) {
-    min = num(m[1]); max = num(m[2]);
-  } else if ((m = low.match(/(?:between|entre)\s+(\d{1,3})\s+(?:and|et|e)\s+(\d{1,3})/))) {
-    min = num(m[1]); max = num(m[2]);
-  } else if ((m = low.match(/aged\s+(\d{1,3})\s*(?:-|–|to)\s*(\d{1,3})/))) {
-    min = num(m[1]); max = num(m[2]);
-  } else if ((m = low.match(/(\d)0\s*대\s*(초반|중반|후반)?\s*(이상|이하|미만)?/))) {
-    const d = num(m[1]) * 10;
-    if (m[2] === '초반') { min = d; max = d + 3; }
-    else if (m[2] === '중반') { min = d + 3; max = d + 6; }
-    else if (m[2] === '후반') { min = d + 6; max = d + 9; }
-    else { min = d; max = d + 9; }
-    if (m[3] === '이상') max = null;
-    if (m[3] === '이하') min = null;
-    if (m[3] === '미만') { min = null; max = d - 1; }
+function parseAge(low) {
+  let min = null, max = null, span = '', m;
+  const set = (a, b, sp) => { min = a; max = b; span = sp; };
+  if ((m = low.match(/(\d{1,2})0\s*(?:~|-|–|〜|～)\s*(\d{1,2})0\s*(?:대|代)/))) set(+m[1] * 10, +m[2] * 10 + 9, m[0]);
+  else if ((m = low.match(/(\d{1,3})\s*(?:세|살|歳|years?|yrs?|ans|anos|वर्ष|साल)?\s*(?:~|-|–|〜|～|to)\s*(\d{1,3})\s*(?:세|살|歳|years?|yrs?|ans|anos|वर्ष|साल)/))) set(+m[1], +m[2], m[0]);
+  else if ((m = low.match(/(?:between|entre)\s+(\d{1,3})\s+(?:and|et|e)\s+(\d{1,3})(?:\s*(?:ans|anos|years?))?/))) set(+m[1], +m[2], m[0]);
+  else if ((m = low.match(/aged\s+(\d{1,3})\s*(?:-|–|to)\s*(\d{1,3})/))) set(+m[1], +m[2], m[0]);
+  else if ((m = low.match(/(\d)0\s*대\s*(초반|중반|후반)?\s*(이상|이하|미만)?/))) {
+    const d = +m[1] * 10;
+    let a = d, b = d + 9;
+    if (m[2] === '초반') b = d + 3; else if (m[2] === '중반') { a = d + 3; b = d + 6; } else if (m[2] === '후반') a = d + 6;
+    if (m[3] === '이상') b = null;
+    if (m[3] === '이하') a = null;
+    if (m[3] === '미만') { a = null; b = d - 1; }
+    set(a, b, m[0]);
   } else if ((m = low.match(/(\d)0\s*代\s*(前半|後半)?\s*(以上|以下)?/))) {
-    const d = num(m[1]) * 10;
-    if (m[2] === '前半') { min = d; max = d + 4; }
-    else if (m[2] === '後半') { min = d + 5; max = d + 9; }
-    else { min = d; max = d + 9; }
-    if (m[3] === '以上') max = null;
-    if (m[3] === '以下') min = null;
+    const d = +m[1] * 10;
+    let a = d, b = d + 9;
+    if (m[2] === '前半') b = d + 4; else if (m[2] === '後半') a = d + 5;
+    if (m[3] === '以上') b = null;
+    if (m[3] === '以下') a = null;
+    set(a, b, m[0]);
   } else if ((m = low.match(/\b(?:in\s+(?:their|his|her)\s+)?(early|mid|late)?[\s-]*(\d)0s\b(\s*(?:and|or)\s*(?:older|over|above|up))?/))) {
-    const d = num(m[2]) * 10;
-    if (m[1] === 'early') { min = d; max = d + 3; }
-    else if (m[1] === 'mid') { min = d + 3; max = d + 6; }
-    else if (m[1] === 'late') { min = d + 6; max = d + 9; }
-    else { min = d; max = d + 9; }
-    if (m[3]) max = null;
-  } else if ((m = low.match(/casa dos (\d)0/))) {
-    min = num(m[1]) * 10; max = min + 9;
-  } else if ((m = low.match(/(vingt|trent|quarant|cinquant|soixant|septant)aine/))) {
-    min = FR_DECADES[m[1]]; max = min + 9;
-  } else {
-    // 한쪽 끝만 있는 경우
+    const d = +m[2] * 10;
+    let a = d, b = d + 9;
+    if (m[1] === 'early') b = d + 3; else if (m[1] === 'mid') { a = d + 3; b = d + 6; } else if (m[1] === 'late') a = d + 6;
+    if (m[3]) b = null;
+    set(a, b, m[0]);
+  } else if ((m = low.match(/casa dos (\d)0/))) set(+m[1] * 10, +m[1] * 10 + 9, m[0]);
+  else if ((m = low.match(/(vingt|trent|quarant|cinquant|soixant|septant)aine/))) set(FR_DECADES[m[1]], FR_DECADES[m[1]] + 9, m[0]);
+  else {
     const lower = [
       /(\d{1,3})\s*(?:세|살)\s*(?:이상|넘은|넘는|초과)/, /(\d{1,3})\s*歳\s*(?:以上|超)/,
       /(?:over|above|older than|at least)\s+(\d{1,3})/, /(\d{1,3})\s*(?:\+|\s+(?:or|and)\s+(?:older|over|above|up))/,
@@ -1019,30 +1010,159 @@ function parseHints(text) {
       /(?:under|below|younger than)\s+(\d{1,3})/, /(?:moins de)\s+(\d{1,3})\s*ans/,
       /(?:menos de|abaixo de)\s+(\d{1,3})\s*anos/, /(\d{1,3})\s*(?:वर्ष|साल)\s*से\s*कम/,
     ];
-    for (const re of lower) { if ((m = low.match(re))) { min = num(m[1]); if (/^(over|above|older than)|초과|超/.test(m[0])) min += 1; break; } }
-    for (const re of upper) { if ((m = low.match(re))) { max = num(m[1]); if (/미만|未満|under|below|younger|moins|menos|abaixo|कम/.test(m[0])) max -= 1; break; } }
-    if (min == null && max == null) {
-      // 단일 나이: 35세 · 35살 · 35歳 · 35-year-old · 35 ans · 35 anos
-      if ((m = low.match(/(\d{1,3})\s*(?:세|살|歳|-?\s*years?[\s-]old|ans|anos)(?![\d])/))) { min = num(m[1]); max = num(m[1]); }
-    }
+    const spans = [];
+    for (const re of lower) { if ((m = low.match(re))) { min = +m[1]; if (/^(over|above|older than)|초과|超/.test(m[0])) min += 1; spans.push(m[0]); break; } }
+    for (const re of upper) { if ((m = low.match(re))) { max = +m[1]; if (/미만|未満|under|below|younger|moins|menos|abaixo|कम/.test(m[0])) max -= 1; spans.push(m[0]); break; } }
+    if (min == null && max == null && (m = low.match(/(\d{1,3})\s*(?:세|살|歳|-?\s*years?[\s-]old|ans|anos)(?![\d])/))) { min = max = +m[1]; spans.push(m[0]); }
+    span = spans.join('\n');
   }
   if (min != null && max != null && min > max) { const x = min; min = max; max = x; }
   if (min != null && (min < 0 || min > 120)) min = null;
   if (max != null && (max < 0 || max > 120)) max = null;
+  if (min == null && max == null) return null;
+  const label = min != null && max != null ? (min === max ? `${min}세` : `${min}~${max}세`) : min != null ? `${min}세 이상` : `${max}세 이하`;
+  return { id: 'age', label, min, max, span };
+}
 
-  const hints = [];
-  if (min != null || max != null) {
+// 학력 단계: 0 초등 이하 · 1 중학교 · 2 고등학교 · 3 전문대 · 대학 중퇴 · 4 대학교 · 5 대학원
+const EDU_NAMES = ['초등학교', '중학교', '고등학교', '전문대', '대학교', '대학원'];
+const EDU_QUERY = [
+  [5, /(대학원|석사|박사|post\s?-?graduates?|postgraduates?|master'?s(?:\s+degree)?|ph\.?\s?d|doctoral|doctorate|graduate degrees?|大学院|修士|博士|bac\s*\+\s*5|doctorat|mestrado|doutorado|pós-gradua\w*|स्नातकोत्तर)/],
+  [3, /(전문대\w*|2~3년제|2년제|3년제|associate'?s? degrees?|短大|短期大学|専門学校|bac\s*\+\s*2|curso técnico)/],
+  [4, /(4년제\s*대학교?|대학교|대졸|대학\s*(?:을|를)?\s*(?:졸업|나온)|대학\s*(?=이상|이하|미만|을|를|은|는)|학사|bachelor'?s?(?:\s+degrees?)?|college\s+(?:degrees?|graduates?|educated)|university\s+(?:degrees?|graduates?|educated)|degree holders?|大卒|大学卒|大学を卒業|大学|学士|licence|bac\s*\+\s*[34]|diplômés? du supérieur|ensino superior|curso superior|faculdade|universitári[oa]s?|स्नातक)/],
+  [2, /(고졸|고등학교|high[\s-]school(?:\s+(?:graduates?|diploma))?|高卒|高校|baccalauréat|lycée|ensino médio)/],
+  [1, /(중졸|중학교|middle school|junior high|中卒|中学)/],
+];
+function parseEdu(low) {
+  for (const [L, re] of EDU_QUERY) {
+    const m = re.exec(low);
+    if (!m) continue;
+    const idx = m.index, end = idx + m[0].length;
+    const after = low.slice(end, end + 18), before = low.slice(Math.max(0, idx - 14), idx);
+    let min = L, max = L >= 3 ? null : L, mod = '';
+    let mm;
+    if ((mm = after.match(/^\s*(?:을|를)?\s*(?:졸업\s*)?(?:이상|以上|or (?:higher|above|more)|and (?:above|up|higher)|ou plus|ou mais|या उससे अधिक)/)) || /(?:at least|au moins|pelo menos)\s*(?:a\s*)?$/.test(before)) { min = L; max = null; mod = mm ? mm[0] : ''; }
+    else if ((mm = after.match(/^\s*(?:을|를)?\s*(?:졸업\s*)?(?:이하|以下|or (?:less|lower|below)|ou moins|ou menos)/))) { min = null; max = L; mod = mm[0]; }
+    else if ((mm = after.match(/^\s*(?:을|를)?\s*(?:졸업\s*)?(?:미만|未満)/)) || /(?:less than|below|under|moins que|menos que)\s*(?:a\s*)?$/.test(before)) { min = null; max = L - 1; mod = mm ? mm[0] : ''; }
+    else if ((mm = after.match(/^\s*(?:을|를|은|는)?\s*(?:졸업\s*)?(?:하지\s*않|안\s*(?:한|나온|다닌|간)|못\s*(?:한|나온|간)|を出ていない|に行っていない)/)) || /(?:no|without|sans|sem|not|didn'?t (?:go to|finish|attend))\s*(?:a\s*)?$/.test(before)) { min = null; max = L - 1; mod = mm ? mm[0] : ''; }
+    if (max != null && max < 0) return null;
     let label;
-    if (min != null && max != null) label = min === max ? `${min}세` : `${min}~${max}세`;
-    else if (min != null) label = `${min}세 이상`;
-    else label = `${max}세 이하`;
-    hints.push({ id: 'age', label, min, max });
+    if (min != null && max != null) label = min === max ? `${EDU_NAMES[min]} 졸업` : `${EDU_NAMES[min]}~${EDU_NAMES[max]}`;
+    else if (min != null) label = `${EDU_NAMES[min]} 이상`;
+    else label = max >= 0 ? `${EDU_NAMES[max]} 이하` : '';
+    return { id: 'edu', label: `학력 ${label}`, min, max, span: m[0] + mod };
   }
-  const female = /(여성|여자|여성분|女性|女の人|\bwom[ae]n\b|\bfemales?\b|\bladies\b|\bfemmes?\b|\bmulher(?:es)?\b|महिला|औरत)/i.test(t);
-  const male = /(남성|남자|男性|男の人|\bm[ae]n\b|\bmales?\b|\bhommes?\b|\bhomens?\b|\bhomem\b|पुरुष|आदमी)/i.test(t);
-  if (female !== male) hints.push({ id: 'sex', label: female ? '여성' : '남성', sex: female ? 'female' : 'male' });
+  return null;
+}
+// 데이터에 들어 있는 학력 값을 단계로 바꾼다 (6개 나라 표현)
+function eduLevelOfValue(v) {
+  const t = normalizeKey(v);
+  if (!t) return null;
+  if (/less than 9th|sem instru|no schooling|무학|미취학|aucun diplôme|aucun diplome|sans diplôme|illiterate|निरक्षर|未就学|no formal/.test(t)) return 0;
+  if (/fundamental incompleto/.test(t)) return 0;
+  if (/9th.{0,6}12th|no diploma|médio incompleto|medio incompleto|fundamental completo/.test(t)) return 1;
+  if (/superior incompleto|some college|4년제\s*미만|대학\s*중퇴|대학교\s*중퇴|대학\s*재학|대학교\s*재학/.test(t)) return 3;
+  if (/대학원|석사|박사|post\s?-?graduate|postgraduate|graduate or professional|graduate degree|professional degree|master|doctor|ph\.?d|大学院|修士|博士|bac\s*\+\s*[5-8]|doctorat|mestrado|doutorado|pós-gradua|pos-gradua|स्नातकोत्तर/.test(t)) return 5;
+  if (/전문대|[23]\s*년제|2~3년제|associate|短大|短期大学|高専|専門学校|bac\s*\+\s*2|\bbts\b|\bdut\b|tecnólogo|tecnologo|diploma course|डिप्लोमा/.test(t)) return 3;
+  if (/4년제|대학교|대학\s*졸업|대졸|학사|bachelor|college graduate|university|^graduate|大学|学士|bac\s*\+\s*[34]|licence|superior completo|ensino superior|graduação|graduacao|स्नातक/.test(t)) return 4;
+  if (/고등학교|고졸|high school|12th|higher secondary|senior secondary|高校|高等学校|lycée|lycee|baccalauréat|baccalaureat|^bac\b|\bcap\b|\bbep\b|médio completo|medio completo|ensino médio|ensino medio|उच्च माध्यमिक/.test(t)) return 2;
+  if (/중학교|중졸|middle school|junior high|中学|collège|brevet|secondary|माध्यमिक|10th/.test(t)) return 1;
+  if (/초등|elementary|primary|小学|école primaire|ecole primaire|fundamental|प्राथमिक|\b[1-8]th grade/.test(t)) return 0;
+  return null;
+}
+
+const ALONE_QUERY = /(혼자\s*(?:사는|살고|살며|살아가는|거주하는|지내는)|홀로\s*(?:사는|살고)|독거\w*|1인\s*가구|일인\s*가구|一人暮らし|ひとり暮らし|単身\w*|独居\w*|(?:live|lives|living)\s+alone|single[- ](?:person|member) households?|one[- ]person households?|(?:vit|vivent|vivant)\s+seule?s?|personnes? seules?|(?:mora|moram|vive|vivem|morando)\s+sozinh[oa]s?|unipessoal|अकेले\s*(?:रहते|रहती|रहने))/;
+const ALONE_VALUE = /(1인|일인|혼자|독거|단독\s*가구|alone|single[- ]person|one[- ]person|一人|単身|独居|vit seul|personne seule|^seule?s?$|unipessoal|sozinh|अकेल)/;
+const MARITAL = [
+  ['single', '미혼', /(미혼|비혼|결혼\s*(?:안|하지\s*않|을\s*안)\s*\w*|\bunmarried\b|never[\s_-]*married|\bsingle\b(?![- ](?:person|member|parent))|未婚|独身|célibataires?|celibataires?|solteir[oa]s?|अविवाहित)/],
+  ['married', '기혼', /(기혼|결혼한|결혼\s*한|배우자\s*(?:가\s*)?있\w*|유배우|유부남|유부녀|\bmarried\b|既婚|配偶者あり|有配偶|mariée?s?|casad[oa]s?|विवाहित)/],
+  ['divorced', '이혼', /(이혼\w*|divorc\w*|離婚|तलाक\w*)/],
+  ['widowed', '사별', /(사별\w*|widow\w*|死別|veu(?:f|ve)s?|viúv[oa]s?|viuv[oa]s?|विधवा|विधुर)/],
+];
+function maritalOfValue(v) {
+  const t = normalizeKey(v);
+  if (!t) return null;
+  for (const [id, , re] of MARITAL) if (re.test(t)) return id;
+  return null;
+}
+
+function parseHints(text) {
+  const t = String(text || '').normalize('NFKC');
+  const low = t.toLowerCase();
+  const hints = [];
+  const age = parseAge(low);
+  if (age) hints.push(age);
+  const fm = t.match(/(여성|여자|여성분|女性|女の人|\bwom[ae]n\b|\bfemales?\b|\bladies\b|\bfemmes?\b|\bmulher(?:es)?\b|महिला|औरत)/i);
+  const mm = t.match(/(남성|남자|男性|男の人|\bm[ae]n\b|\bmales?\b|\bhommes?\b|\bhomens?\b|\bhomem\b|पुरुष|आदमी)/i);
+  if (!!fm !== !!mm) hints.push({ id: 'sex', label: fm ? '여성' : '남성', sex: fm ? 'female' : 'male', span: (fm || mm)[0].toLowerCase() });
+  const edu = parseEdu(low);
+  if (edu) hints.push(edu);
+  const al = low.match(ALONE_QUERY);
+  if (al) hints.push({ id: 'alone', label: '혼자 사는 사람', span: al[0] });
+  const found = MARITAL.map(([id, label, re]) => { const m = low.match(re); return m ? { id, label, span: m[0] } : null; }).filter(Boolean);
+  if (found.length === 1) hints.push({ id: 'marital', label: found[0].label, value: found[0].id, span: found[0].span });
   return hints;
 }
+// 조건을 뺀 나머지 문장 (AI가 의미로 판단할 부분)
+const QUERY_FILLER = new Set(['사람', '사람들', '분', '분들', '중', '중에', '중에서', '이면서', '면서', '이고', '이며', '그리고', '및', '인', '이상', '이하', '미만', '졸업', '졸업한', '졸업자', '졸업하고', '나온', '출신', '사는', '살고', '있는', '하는', '한', '찾아줘', '찾아', '골라줘', '골라', '보여줘', '데이터',
+  'people', 'person', 'persons', 'who', 'that', 'are', 'is', 'and', 'with', 'the', 'an', 'of', 'in', 'find', 'show', 'me', 'aged', 'graduated', 'from',
+  '人', '方', 'の', 'で', 'personnes', 'pessoas', 'que', 'qui', 'et', 'de', 'des', 'com', 'os', 'as', 'ans', 'anos', 'years', 'old', 'लोग', 'जो', 'और']);
+function queryRemainder(text, hints) {
+  let rest = String(text || '').normalize('NFKC').toLowerCase();
+  for (const h of hints) for (const sp of String(h.span || '').split('\n')) if (sp) rest = rest.split(sp).join(' ');
+  const words = rest.split(/[\s,.;:!?·、。()"'“”‘’\-–—/]+/).map(w => {
+    if (HANGUL_RE.test(w)) { const x = w.replace(KO_SUFFIX_RE, ''); return x.length >= 1 ? x : w; }
+    return w;
+  }).filter(w => w && w.length >= 2 && !QUERY_FILLER.has(w) && !STOPWORDS.has(w) && !/^\d+$/.test(w));
+  return words.length ? rest.replace(/\s+/g, ' ').trim() : '';
+}
+
+// 인식한 조건을 지금 모은 데이터의 실제 값과 연결한다
+const distinctCache = new Map();
+function distinctValues(col) {
+  const key = `${col}|${state.rows.length}|${state.rows[0] ? rowKey(state.rows[0]) : ''}`;
+  if (distinctCache.has(key)) return distinctCache.get(key);
+  const set = new Set();
+  for (const r of state.rows) { const v = cellText(r[col]); if (v) set.add(v); if (set.size > 400) break; }
+  const out = [...set];
+  distinctCache.set(key, out);
+  return out;
+}
+function presentCol(cands) {
+  const sample = state.rows.slice(0, 200);
+  return cands.find(c => sample.some(r => cellText(r[c]))) || null;
+}
+function hintPlan(h) {
+  if (h.id === 'age') return { ok: state.rows.some(r => rowAge(r) != null), values: [] };
+  if (h.id === 'sex') return { ok: state.rows.some(r => rowSex(r) != null), values: [] };
+  if (h.id === 'edu') {
+    const col = presentCol(['education_level', 'education', 'highest_education']);
+    if (!col) return { ok: false };
+    const vals = distinctValues(col).filter(v => {
+      const L = eduLevelOfValue(v);
+      return L != null && (h.min == null || L >= h.min) && (h.max == null || L <= h.max);
+    });
+    const known = distinctValues(col).some(v => eduLevelOfValue(v) != null);
+    return { ok: known, col, set: new Set(vals), values: vals };
+  }
+  if (h.id === 'alone') {
+    const cols = state.allColumns.filter(c => /household|family|living|cohabit|residence_type|famil/i.test(c) && !/persona|marital/i.test(c));
+    for (const col of cols) {
+      const vals = distinctValues(col).filter(v => v.length <= 60 && ALONE_VALUE.test(normalizeKey(v)));
+      if (vals.length) return { ok: true, col, set: new Set(vals), values: vals };
+    }
+    return { ok: false };
+  }
+  if (h.id === 'marital') {
+    const col = presentCol(['marital_status', 'relationship_status']);
+    if (!col) return { ok: false };
+    const all = distinctValues(col);
+    const vals = all.filter(v => maritalOfValue(v) === h.value);
+    return { ok: all.some(v => maritalOfValue(v) != null), col, set: new Set(vals), values: vals };
+  }
+  return { ok: false };
+}
+function hintPlans(hints) { return hints.map(h => ({ h, ...hintPlan(h) })); }
 function rowSex(row) {
   const v = normalizeKey(pickField(row, ['sex', 'gender']));
   if (!v) return null;
@@ -1078,18 +1198,18 @@ function matchesConditions(row, cats, rngs) {
 }
 function baseRows(hints) {
   const { cats, rngs } = conditionMatchers();
-  const age = hints.find(h => h.id === 'age');
-  const sex = hints.find(h => h.id === 'sex');
-  const sexKnown = sex && state.rows.some(r => rowSex(r) != null);
+  const plans = hintPlans(hints).filter(p => p.ok);
   return state.rows.filter(row => {
     if ((cats.length || rngs.length) && !matchesConditions(row, cats, rngs)) return false;
-    if (age) {
-      const a = rowAge(row);
-      if (a == null) return false;
-      if (age.min != null && a < age.min) return false;
-      if (age.max != null && a > age.max) return false;
+    for (const p of plans) {
+      const h = p.h;
+      if (h.id === 'age') {
+        const a = rowAge(row);
+        if (a == null || (h.min != null && a < h.min) || (h.max != null && a > h.max)) return false;
+      } else if (h.id === 'sex') {
+        if (rowSex(row) !== h.sex) return false;
+      } else if (!p.set.has(cellText(row[p.col]))) return false;
     }
-    if (sex && sexKnown && rowSex(row) !== sex.sex) return false;
     return true;
   });
 }
@@ -1896,10 +2016,18 @@ async function runAnalysis(mode = 'search') {
       await ensureEmbeddings();
       const base = baseRows(hints);
       if (!base.length) throw new Error('NO_BASE');
-      if (mode === 'search') {
+      const usable = hintPlans(hints).filter(p => p.ok).map(p => p.h);
+      const rest = mode === 'search' ? queryRemainder(query, usable) : '';
+      state.conditionOnly = mode === 'search' && !rest;
+      if (mode === 'search' && state.conditionOnly) {
+        // 문장이 조건만으로 되어 있으면 AI 순위 없이 조건에 맞는 사람을 모두 고른다
+        const all = base.map(row => ({ row, score: null, rel: null }));
+        state.picked = state.pick === 'auto' ? all : all.slice(0, Number(state.pick));
+        state.lastQuery = query;
+      } else if (mode === 'search') {
         await ensureModel();
         state.ai.phase = 'match'; paintAi();
-        const [qv] = await untilCancelled(embedTexts(['query: ' + query]));
+        const [qv] = await untilCancelled(embedTexts(['query: ' + rest]));
         const scored = base.map(row => ({ row, score: dot(qv, vecStore.get(vecKey(row))) })).sort((a, b) => b.score - a.score);
         const hi = scored[0].score, lo = scored[scored.length - 1].score, span = Math.max(1e-6, hi - lo);
         scored.forEach(s => { s.rel = Math.round((s.score - lo) / span * 100); });
@@ -1909,20 +2037,22 @@ async function runAnalysis(mode = 'search') {
         state.picked = base.map(row => ({ row, score: null, rel: null }));
         state.lastQuery = '';
       }
-      state.lastHints = hints;
+      state.lastHints = usable;
     }
     checkCancelled();
     await clusterPicked();
     state.previewLimit = PREVIEW_STEP;
     const n = state.picked.length, k = state.clusters.length;
-    state.notice = mode === 'search'
+    state.notice = mode === 'search' && state.conditionOnly
+      ? `모은 ${formatN(state.rows.length)}명 중 문장의 조건(${state.lastHints.map(h => h.label).join(', ')})에 정확히 맞는 ${formatN(n)}명을 골라 ${k}개 군집으로 나눴습니다.`
+      : mode === 'search'
       ? `모은 ${formatN(state.rows.length)}명 중 문장과 가장 가까운 ${formatN(n)}명을 골라 ${k}개 군집으로 나눴습니다.`
       : `${formatN(n)}명을 ${k}개 군집으로 나눴습니다.`;
     state.noticeType = 'success';
   } catch (e) {
     const msg = String(e?.message || e);
     if (msg === 'CANCELLED') { state.notice = 'AI 분석을 중지했습니다. 이미 분석한 사람은 저장되어 다음에 이어서 진행됩니다.'; state.noticeType = 'info'; }
-    else if (msg === 'NO_BASE') { state.notice = '문장 속 조건(나이 · 성별)이나 프로필 조건에 맞는 사람이 없습니다. 조건을 끄거나 더 모아 보세요.'; state.noticeType = 'warn'; }
+    else if (msg === 'NO_BASE') { state.notice = '문장 속 조건(나이 · 성별 · 학력 · 혼자 사는지 · 혼인)이나 프로필 조건에 모두 맞는 사람이 없습니다. 조건을 끄거나 더 모아 보세요.'; state.noticeType = 'warn'; }
     else state.error = `AI 분석 중 문제가 생겼습니다. ${msg}`;
   } finally {
     state.busy = false;
@@ -2444,8 +2574,19 @@ function filterRowHtml(field) {
 function hintsHtml() {
   const hints = parseHints(state.query);
   if (!hints.length) return '';
-  return `<span class="hint-label">문장에서 찾은 조건</span>` + hints.map(h =>
-    `<button class="hint-chip ${state.hintsOff.has(h.id) ? 'off' : ''}" data-hint="${h.id}" aria-pressed="${!state.hintsOff.has(h.id)}">${esc(h.label)} <i data-lucide="${state.hintsOff.has(h.id) ? 'plus' : 'x'}"></i></button>`).join('');
+  const plans = state.rows.length ? hintPlans(hints) : hints.map(h => ({ h, ok: true, values: [] }));
+  const chips = plans.map(({ h, ok }) => {
+    const off = state.hintsOff.has(h.id);
+    if (!ok) return `<span class="hint-chip soft" title="데이터에 해당 항목이 없어 AI가 의미로 판단합니다">${esc(h.label)} · AI 판단</span>`;
+    return `<button class="hint-chip ${off ? 'off' : ''}" data-hint="${h.id}" aria-pressed="${!off}">${esc(h.label)} <i data-lucide="${off ? 'plus' : 'x'}"></i></button>`;
+  }).join('');
+  const details = plans.filter(p => p.ok && p.values && p.values.length && !state.hintsOff.has(p.h.id)).map(p => {
+    const shown = p.values.slice(0, 4).map(v => prettyText(displayValue(p.col, v)));
+    return `<div class="hint-detail"><b>${esc(fieldLabel(p.col))}</b> ${esc(shown.join(' · '))}${p.values.length > 4 ? ` 외 ${p.values.length - 4}` : ''}</div>`;
+  }).join('');
+  const empty = plans.filter(p => p.ok && p.values && !p.values.length && !['age', 'sex'].includes(p.h.id) && !state.hintsOff.has(p.h.id))
+    .map(p => `<div class="hint-detail warn">${esc(p.h.label)}에 해당하는 값이 모은 데이터에 없습니다</div>`).join('');
+  return `<span class="hint-label">문장에서 찾은 조건</span>${chips}${details || empty ? `<div class="hint-details">${details}${empty}</div>` : ''}`;
 }
 function bindHints() {
   document.querySelectorAll('[data-hint]').forEach(b => {
@@ -2513,7 +2654,7 @@ function renderResult(app) {
   const firstDownload = !engine.ready && state.modelCached === false;
   const resultBlock = picked ? `
     <h2 class="section-heading" id="resultTop">${state.lastQuery ? '골라낸 사람' : '전체 군집'} · ${formatN(picked.length)}명</h2>
-    ${state.lastQuery ? `<div class="match-line">“${esc(state.lastQuery)}”<br>와 가장 가까운 <b>${formatN(picked.length)}명</b>${state.lastHints.length ? ` · ${esc(state.lastHints.map(h => h.label).join(', '))}` : ''}</div>` : ''}
+    ${state.lastQuery ? `<div class="match-line">“${esc(state.lastQuery)}”<br>${state.conditionOnly ? '의 조건에 정확히 맞는' : '와 가장 가까운'} <b>${formatN(picked.length)}명</b>${state.lastHints.length ? ` · ${esc(state.lastHints.map(h => h.label).join(', '))}` : ''}</div>` : ''}
     ${clusterSection()}
     <h2 class="section-heading">${state.activeCluster != null ? `${esc(clusterName(state.clusters[state.activeCluster]))} · ${formatN(visible.length)}명` : '사람 목록'}</h2>
     ${state.activeCluster != null ? '<button class="btn btn-outline btn-small btn-full" id="allClusterButton" style="margin-bottom:12px">모든 군집 보기</button>' : ''}
@@ -2536,7 +2677,7 @@ function renderResult(app) {
     <div class="example-box">
       <b>이렇게 써 보세요</b>
       <div class="example-chips">${QUERY_EXAMPLES.map((k, i) => `<button class="example-chip" data-example="${i}">${esc(k)}</button>`).join('')}</div>
-      <p>한국어 · 영어 · 일본어 · 프랑스어 · 포르투갈어 · 힌디어 등 어떤 말로 써도 됩니다. 나이와 성별은 데이터 값으로 정확히 걸러지고, 나머지는 AI가 의미로 찾습니다.</p>
+      <p>한국어 · 영어 · 일본어 · 프랑스어 · 포르투갈어 · 힌디어 등 어떤 말로 써도 됩니다. <b>나이 · 성별 · 학력 · 혼자 사는지 · 혼인 상태</b>는 데이터 값으로 정확히 걸러지고, 나머지 성향은 AI가 의미로 찾습니다.</p>
     </div>
 
     <h3 class="sub-heading">몇 명을 고를까요?</h3>
@@ -2907,7 +3048,7 @@ document.addEventListener('keydown', e => { if (e.key === 'Escape') closeSheet()
 })();
 
 // 테스트용 진입점 (화면에는 영향 없음)
-window.__personaAI = { state, importCollectionFiles, parseHints, kmeans, chooseK, rowTokens, clusterTerms, passageText, workerCode };
+window.__personaAI = { state, importCollectionFiles, eduLevelOfValue, maritalOfValue, queryRemainder, hintPlans, parseHints, kmeans, chooseK, rowTokens, clusterTerms, passageText, workerCode };
 
 render();
 })();
