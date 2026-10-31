@@ -279,6 +279,8 @@ details.more[open] summary:before{content:"－ "}
 .phase.done{color:var(--success)}
 .phase svg{width:19px;height:19px}
 .persona-card h3 .score-badge{flex:0 0 auto;min-width:auto}
+.evidence{margin:0 0 10px;padding:11px 13px;border-left:4px solid #6366f1;border-radius:10px;background:#eef2ff;color:var(--s700);font-size:16px;font-weight:600;line-height:1.6;overflow-wrap:anywhere}
+.evidence b{display:block;margin-bottom:2px;color:#4338ca;font-size:16px;font-weight:900}
 .saved-list{display:grid;gap:10px}
 .saved-list:empty{display:none}
 .saved-row{display:grid;grid-template-columns:1fr 46px;gap:8px;align-items:stretch}
@@ -336,8 +338,17 @@ const MAX_TOKENS = 128;
 const EMBED_BATCH_CPU = 16;
 const EMBED_BATCH_GPU = 48;
 const PASSAGE_CHARS = 900;
-const VEC_VERSION = `${MODEL_ID}|${MAX_TOKENS}|p2`;
-const EMBED_RATE_GUESS = 25;   // 명/초 (휴대폰 기준 대략값)
+const VEC_VERSION = `${MODEL_ID}|${MAX_TOKENS}|p3`;
+const EMBED_DIM = 384;
+// 한 사람의 글을 세 묶음으로 나눠 각각 읽는다 (뒤쪽 항목이 잘리지 않도록)
+const CHUNK_GROUPS = [
+  ['persona', 'professional_persona'],
+  ['cultural_background', 'family_persona', 'travel_persona'],
+  ['hobbies_and_interests', 'career_goals_and_ambitions', 'skills_and_expertise', 'personality_traits', 'arts_persona', 'sports_persona', 'culinary_persona'],
+];
+const CHUNK_CHARS = 600;
+const LEX_WEIGHT = 0.08;
+const EMBED_RATE_GUESS = 10;   // 명/초 (세 묶음으로 나눠 읽을 때 휴대폰 기준 대략값)
 
 const PICK_OPTIONS = ['auto', 30, 50, 100, 200, 500];
 const K_OPTIONS = ['auto', 2, 3, 4, 5, 6, 7, 8];
@@ -462,7 +473,7 @@ const state = {
   nextOffset: null,
   rows: [],
   filterFields: [], category: {}, ranges: {},
-  query: '', hintsOff: new Set(), pick: 'auto', conditionOnly: false,
+  query: '', hintsOff: new Set(), pick: 'auto', conditionOnly: false, strongInfo: null,
   picked: null,           // [{ row, score, rel, cluster }]
   lastQuery: '', lastHints: [],
   kChoice: 'auto', clusters: [], activeCluster: null, scatter: null,
@@ -479,6 +490,9 @@ const state = {
 const requestRuntime = { nextRequestAt: 0, gapMs: REQUEST_GAP_MS, hits: 0, wins: 0, lastOkAt: 0, kind: 'pacing' };
 const nameCache = new WeakMap();
 const passageCache = new WeakMap();
+const chunkCache = new WeakMap();
+const lexTextCache = new WeakMap();
+const meanVecCache = new Map();
 const tokenCache = new WeakMap();
 const vecKeyCache = new WeakMap();
 const vecStore = new Map();     // vecKey → Float32Array(384)
@@ -1306,6 +1320,46 @@ function passageText(row) {
   passageCache.set(row, text);
   return text;
 }
+function chunkTexts(row) {
+  const cached = chunkCache.get(row);
+  if (cached) return cached;
+  const head = passageText(row).split('\n')[0];
+  const out = [];
+  CHUNK_GROUPS.forEach((fields, gi) => {
+    const body = fields.map(f => cellText(row[f]).replace(/\s+/g, ' ').trim()).filter(Boolean).join('\n');
+    if (!body && gi > 0) return;
+    out.push(((gi === 0 ? head + '\n' : '') + body).slice(0, CHUNK_CHARS));
+  });
+  if (!out.length) out.push(head || '-');
+  chunkCache.set(row, out);
+  return out;
+}
+// 한 사람 전체를 대표하는 벡터 (묶음 평균) — 군집과 지도에 쓴다
+function meanVec(row) {
+  const key = vecKey(row);
+  let v = meanVecCache.get(key);
+  if (v) return v;
+  const flat = vecStore.get(key);
+  v = new Float32Array(EMBED_DIM);
+  const n = Math.max(1, Math.floor(flat.length / EMBED_DIM));
+  for (let c = 0; c < n; c++) for (let j = 0; j < EMBED_DIM; j++) v[j] += flat[c * EMBED_DIM + j];
+  normalizeVec(v);
+  meanVecCache.set(key, v);
+  return v;
+}
+// 문장과의 의미 점수: 가장 잘 맞는 묶음 + 전체 평균 조금
+function semScore(qv, row) {
+  const flat = vecStore.get(vecKey(row));
+  const n = Math.max(1, Math.floor(flat.length / EMBED_DIM));
+  let best = -2, sum = 0;
+  for (let c = 0; c < n; c++) {
+    let d = 0; const o = c * EMBED_DIM;
+    for (let j = 0; j < EMBED_DIM; j++) d += qv[j] * flat[o + j];
+    if (d > best) best = d;
+    sum += d;
+  }
+  return best * 0.85 + (sum / n) * 0.15;
+}
 function vecKey(row) {
   const cached = vecKeyCache.get(row);
   if (cached) return cached;
@@ -1687,23 +1741,38 @@ async function ensureEmbeddings() {
   state.ai.phase = 'cache';
   paintAi();
   const cached = await idbGetMany(missing.map(vecKey));
-  cached.forEach((v, k) => vecStore.set(k, v));
+  cached.forEach((v, k) => { if (v.length % EMBED_DIM === 0) vecStore.set(k, v); });
   missing = missing.filter(r => !vecStore.has(vecKey(r)));
   if (!missing.length) return;
 
   await ensureModel();
+  // 사람별 묶음을 한 줄로 펼쳐서 일정한 크기로 나눠 읽는다
+  const jobs = [];
+  missing.forEach((r, ri) => chunkTexts(r).forEach((t, ci) => jobs.push([ri, ci, t])));
+  const parts = missing.map(r => new Array(chunkTexts(r).length));
+  const left = missing.map(r => chunkTexts(r).length);
   state.ai.phase = 'embed';
   state.ai.done = 0; state.ai.todo = missing.length; state.ai.startAt = performance.now();
   paintAi();
-  let buffer = [];
+  let buffer = [], chunksDone = 0;
   try {
     const batch = embedBatch();
-    for (let i = 0; i < missing.length; i += batch) {
+    for (let i = 0; i < jobs.length; i += batch) {
       checkCancelled();
-      const chunk = missing.slice(i, i + batch);
-      const vecs = await untilCancelled(embedTexts(chunk.map(r => 'passage: ' + passageText(r))));
-      chunk.forEach((r, j) => { const k = vecKey(r); vecStore.set(k, vecs[j]); buffer.push([k, vecs[j]]); });
-      state.ai.done += chunk.length;
+      const slice = jobs.slice(i, i + batch);
+      const vecs = await untilCancelled(embedTexts(slice.map(j => 'passage: ' + j[2])));
+      slice.forEach(([ri, ci], j) => {
+        parts[ri][ci] = vecs[j];
+        if (--left[ri] === 0) {
+          const flat = new Float32Array(parts[ri].length * EMBED_DIM);
+          parts[ri].forEach((v, c) => flat.set(v, c * EMBED_DIM));
+          const k = vecKey(missing[ri]);
+          vecStore.set(k, flat); buffer.push([k, flat]);
+          parts[ri] = null;
+        }
+      });
+      chunksDone += slice.length;
+      state.ai.done = Math.floor(chunksDone / jobs.length * missing.length);
       paintAi();
       if (buffer.length >= 256) { idbPutMany(buffer); buffer = []; }
       await tick();
@@ -1952,22 +2021,106 @@ function pca2(vecs) {
   });
 }
 
-function pickTop(scored) {
-  if (state.pick !== 'auto') return scored.slice(0, Number(state.pick));
+const CONCEPTS = [
+  ['해외 경험', ['해외', '외국', '유학', '이민을', '이민 ', '이민자', '이민한', '이민했', '이민 간', '주재원', '파견 근무', '교포', '재외', 'abroad', 'overseas', 'foreign', 'expat', 'immigra', 'emigra', '海外', '外国', '留学', '駐在', '移住', '帰国', 'étranger', 'etranger', 'expatri', 'exterior', 'intercâmbio', 'intercambio', 'imigra', 'emigr', 'विदेश', 'प्रवासी'], ['해외여행', '해외 여행', '외국어', '외국인', '외국 음식', '외국 영화', '海外旅行', '外国語', '外国人', 'travel abroad', 'traveling abroad', 'travelling abroad', 'trips abroad', 'foreign language', 'foreign cuisine', 'foreign films', 'foreigners', "voyage à l'étranger", "voyages à l'étranger", 'langues étrangères', 'langue étrangère', 'viagens ao exterior', 'viagem ao exterior', 'línguas estrangeiras', 'idiomas estrangeiros', 'विदेश यात्रा', 'विदेशी भाषा']],
+  ['반려동물', ['반려', '강아지', '고양이', '애완', ' pet ', ' pets', ' dog ', ' dogs', ' cat ', ' cats', 'ペット', '犬', '猫', 'animal de compagnie', 'chien', ' chat ', 'animal de estimação', 'cachorro', ' gato', 'पालतू', 'कुत्त']],
+  ['육아', ['육아', '자녀', '아이를', '아이들', '손주', 'parenting', 'children', ' kids', 'grandchild', '子育て', '子ども', '子供', '孫が', '孫と', '孫の', 'enfants', 'petits-enfants', 'filhos', 'crianças', 'netos', 'बच्च']],
+  ['건강 · 운동', ['건강', '운동', '헬스', '등산', '요가', 'health', 'fitness', 'exercise', 'workout', 'hiking', 'yoga', '健康', '運動', 'ジム', 'santé', ' sport', 'randonnée', 'saúde', 'exercício', 'caminhada', 'स्वास्थ्य', 'व्यायाम', 'योग']],
+  ['기술 · 디지털', ['기술', '디지털', '스마트폰', '컴퓨터', '인공지능', '코딩', 'technology', 'digital', 'smartphone', 'computer', 'software', 'gadget', 'coding', 'テクノロジー', 'デジタル', 'スマホ', 'パソコン', 'technologie', 'numérique', 'informatique', 'tecnologia', 'computador', 'तकनीक', 'डिजिटल', 'कंप्यूटर']],
+  ['종교 · 신앙', ['교회', '성당', '불교', '기독교', '천주교', '신앙', '종교', '사찰', 'church', 'faith', 'religio', 'buddhis', 'christian', 'mosque', 'temple', '教会', '信仰', '宗教', 'お寺', '寺院', '神社', 'église', 'eglise', ' foi ', 'igreja', ' fé ', 'religião', 'मंदिर', 'धर्म', 'पूजा']],
+  ['봉사', ['봉사', '자원봉사', 'volunteer', 'charity', 'nonprofit', 'ボランティア', 'bénévol', 'benevol', 'voluntári', 'voluntari', 'स्वयंसेव', 'सेवा कार्य']],
+  ['재테크 · 투자', ['투자', '주식', '재테크', '부동산', '저축', 'invest', ' stocks', 'stock market', 'savings', 'real estate', '投資', '株式投資', '株を', '貯金', '不動産', 'investiss', 'épargne', 'bourse', 'investimento', 'poupança', 'ações', 'निवेश', 'बचत'], ['주식회사', '株式会社']],
+  ['환경', ['환경', '친환경', '재활용', '기후', 'environment', 'sustainab', 'recycl', 'climate', 'eco-friendly', '環境', 'リサイクル', 'environnement', 'durable', 'meio ambiente', 'sustentáv', 'पर्यावरण']],
+  ['예술 · 디자인', ['디자인', '미술', '예술', '그림', '전시', 'design', ' art ', ' arts', 'artwork', 'artist', 'painting', 'museum', 'デザイン', '美術', '芸術', '絵を', '絵画', 'artiste', 'peinture', 'musée', ' arte', 'pintura', 'museu', 'कला', 'डिज़ाइन', 'डिजाइन']],
+  ['농사 · 텃밭', ['농사', '농업', '텃밭', '귀농', ' farm', 'farms', 'farmer', 'garden', 'agricult', '農業', '畑で', '畑仕事', '家庭菜園', 'jardin', 'potager', 'fazenda', 'horta', 'agricultura', 'खेती', 'किसान']],
+];
+const pad = t => ` ${t} `;
+function blankOut(text, ignore) {
+  if (!ignore || !ignore.length) return text;
+  let out = text;
+  for (const w of ignore) if (out.includes(w)) out = out.split(w).join(' '.repeat(w.length));
+  return out;
+}
+function lexText(row) {
+  let t = lexTextCache.get(row);
+  if (t) return t;
+  t = pad([pickField(row, ['occupation', 'job']), ...PASSAGE_FIELDS.map(f => cellText(row[f]))].join(' \n ').normalize('NFKC').toLowerCase());
+  lexTextCache.set(row, t);
+  return t;
+}
+// 문장에서 볼 개념 · 단어를 정하고, 모은 사람 안에서 얼마나 드문지(가중치)를 계산한다
+function lexicalUnits(rest, rows) {
+  const q = pad(String(rest || '').normalize('NFKC').toLowerCase());
+  const units = [];
+  const covered = [];
+  for (const [label, terms, ignore] of CONCEPTS) {
+    const hit = terms.find(t => blankOut(q, ignore).includes(t));
+    if (hit) { units.push({ label, terms, ignore, concept: true }); covered.push(...terms.map(t => t.trim()).filter(Boolean)); }
+  }
+  const words = q.split(/[\s,.;:!?·、。()"'“”‘’\-–—/]+/).map(w => (HANGUL_RE.test(w) ? (w.replace(KO_SUFFIX_RE, '') || w) : w))
+    .filter(w => w && (HANGUL_RE.test(w) || CJK_RE.test(w) ? w.length >= 2 : w.length >= 4) && !QUERY_FILLER.has(w) && !STOPWORDS.has(w) && !/^\d+$/.test(w));
+  for (const w of new Set(words)) if (!covered.some(c => c.includes(w) || w.includes(c))) units.push({ label: w, terms: [w], concept: false });
+  const N = rows.length;
+  const texts = rows.map(lexText);
+  for (const u of units) {
+    let df = 0;
+    u.hits = new Uint8Array(N);
+    texts.forEach((t, i) => { const x = blankOut(t, u.ignore); if (u.terms.some(term => x.includes(term))) { u.hits[i] = 1; df++; } });
+    u.df = df;
+    u.weight = df && df / N <= 0.5 ? Math.log(N / df) * (u.concept ? 1 : 0.5) : 0;
+  }
+  return units.filter(u => u.weight > 0);
+}
+// 근거 문장: 개념 단어가 실제로 나오는 문장을 찾아 보여 준다
+function findEvidence(row, units) {
+  for (const u of units) {
+    for (const f of PASSAGE_FIELDS) {
+      const orig = cellText(row[f]);
+      if (!orig) continue;
+      const low = blankOut(pad(orig.normalize('NFKC').toLowerCase()), u.ignore);
+      const term = u.terms.find(t => low.includes(t));
+      if (!term) continue;
+      const src = orig.normalize('NFKC');
+      const at = Math.max(0, low.indexOf(term) - 1);
+      const sentences = src.split(/(?<=[.!?。！？])\s*/);
+      let pos = 0;
+      for (const sen of sentences) {
+        if (at < pos + sen.length + 1) return { label: u.label, text: sen.length > 150 ? sen.slice(0, 150) + '…' : sen };
+        pos += sen.length;
+      }
+      return { label: u.label, text: src.slice(Math.max(0, at - 40), at + 100) };
+    }
+  }
+  return null;
+}
+
+function pickTop(scored, units) {
   const n = scored.length;
-  if (!n) return [];
-  const mean = scored.reduce((s, x) => s + x.score, 0) / n;
-  const sd = Math.sqrt(scored.reduce((s, x) => s + (x.score - mean) ** 2, 0) / n) || 1e-6;
-  const cut = mean + sd;
-  let k = scored.filter(x => x.score >= cut).length;
-  k = Math.max(Math.min(AUTO_MIN, n), Math.min(AUTO_MAX, k));
-  return scored.slice(0, k);
+  if (!n) return { picked: [], strong: 0, how: '' };
+  const concepts = (units || []).filter(u => u.concept);
+  // 개념이 있으면: 글에 그 개념이 실제로 나오는 사람이 '뚜렷하게 맞는 사람'
+  let strongSet = null, how = '';
+  if (concepts.length) {
+    const all = scored.filter(s => concepts.every(u => u.hits[s.i]));
+    const any = scored.filter(s => concepts.some(u => u.hits[s.i]));
+    strongSet = all.length ? all : any;
+    how = 'concept';
+  } else {
+    const mean = scored.reduce((s, x) => s + x.score, 0) / n;
+    const sd = Math.sqrt(scored.reduce((s, x) => s + (x.score - mean) ** 2, 0) / n) || 1e-6;
+    strongSet = scored.filter(x => (x.score - mean) / sd >= 1.5);
+    how = 'score';
+  }
+  const strong = strongSet.length;
+  if (state.pick !== 'auto') return { picked: scored.slice(0, Number(state.pick)), strong, how };
+  if (strong) return { picked: strongSet.slice(0, AUTO_MAX), strong, how };
+  return { picked: scored.slice(0, Math.min(AUTO_MIN, n)), strong: 0, how };
 }
 async function clusterPicked() {
   const picked = state.picked || [];
   state.clusters = []; state.activeCluster = null; state.scatter = null;
   if (picked.length < 2) { picked.forEach(p => { p.cluster = 0; }); return; }
-  const vecs = picked.map(p => vecStore.get(vecKey(p.row)));
+  const vecs = picked.map(p => meanVec(p.row));
   state.ai.phase = 'cluster'; paintAi(); await tick();
   let k = state.kChoice === 'auto' ? chooseK(vecs) : Math.min(Number(state.kChoice), picked.length);
   k = Math.max(1, k);
@@ -1997,6 +2150,22 @@ async function clusterPicked() {
   state.scatter = sampleIdx.map((i, j) => ({ x: pts[j][0], y: pts[j][1], c: picked[i].cluster, i }));
 }
 
+function strongNotice(n, k) {
+  const si = state.strongInfo || {};
+  const total = formatN(state.rows.length);
+  const tail = k > 1 ? ` ${k}개 군집으로 나눴습니다.` : '';
+  if (si.how === 'concept') {
+    const what = si.concepts.join(' · ');
+    if (!si.count) return `모은 ${total}명 중 글에 ‘${what}’ 내용이 실제로 나오는 사람이 없습니다. 의미가 가장 가까운 ${formatN(n)}명을 참고로 보여 줍니다.`;
+    if (state.pick === 'auto') return `모은 ${total}명 중 글에 ‘${what}’ 내용이 실제로 나오는 ${formatN(si.count)}명을 골랐습니다.${tail}`;
+    return `문장과 가까운 ${formatN(n)}명을 골랐습니다. 그중 글에 ‘${what}’ 내용이 실제로 나오는 사람은 모두 ${formatN(si.count)}명입니다.${tail}`;
+  }
+  if (state.pick === 'auto') {
+    if (!si.count) return `문장과 뚜렷하게 맞는 사람이 없어, 의미가 가장 가까운 ${formatN(n)}명을 참고로 보여 줍니다.`;
+    return `모은 ${total}명 중 문장과 뚜렷하게 맞는 ${formatN(n)}명을 골랐습니다.${tail}`;
+  }
+  return `문장과 가까운 ${formatN(n)}명을 골랐습니다. 그중 뚜렷하게 맞는 사람은 ${formatN(si.count)}명입니다.${tail}`;
+}
 async function runAnalysis(mode = 'search') {
   if (state.busy || !state.rows.length) return;
   const query = state.query.trim();
@@ -2028,15 +2197,27 @@ async function runAnalysis(mode = 'search') {
         await ensureModel();
         state.ai.phase = 'match'; paintAi();
         const [qv] = await untilCancelled(embedTexts(['query: ' + rest]));
-        const scored = base.map(row => ({ row, score: dot(qv, vecStore.get(vecKey(row))) })).sort((a, b) => b.score - a.score);
+        const units = lexicalUnits(rest, base);
+        const wsum = units.reduce((s, u) => s + u.weight, 0) || 1;
+        const scored = base.map((row, i) => {
+          const lex = units.reduce((s, u) => s + (u.hits[i] ? u.weight : 0), 0) / wsum;
+          return { row, i, sem: semScore(qv, row), lex, score: 0 };
+        });
+        scored.forEach(s => { s.score = s.sem + LEX_WEIGHT * s.lex; });
+        scored.sort((a, b) => b.score - a.score);
         const hi = scored[0].score, lo = scored[scored.length - 1].score, span = Math.max(1e-6, hi - lo);
         scored.forEach(s => { s.rel = Math.round((s.score - lo) / span * 100); });
-        state.picked = pickTop(scored);
+        const res = pickTop(scored, units);
+        state.picked = res.picked;
+        const evUnits = [...units].sort((a, b) => Number(b.concept) - Number(a.concept) || b.weight - a.weight);
+        state.picked.forEach(p => { p.evidence = findEvidence(p.row, evUnits); });
+        state.strongInfo = { count: res.strong, how: res.how, concepts: units.filter(u => u.concept).map(u => u.label) };
         state.lastQuery = query;
       } else {
         state.picked = base.map(row => ({ row, score: null, rel: null }));
         state.lastQuery = '';
       }
+      if (mode !== 'search' || state.conditionOnly) state.strongInfo = null;
       state.lastHints = usable;
     }
     checkCancelled();
@@ -2046,9 +2227,9 @@ async function runAnalysis(mode = 'search') {
     state.notice = mode === 'search' && state.conditionOnly
       ? `모은 ${formatN(state.rows.length)}명 중 문장의 조건(${state.lastHints.map(h => h.label).join(', ')})에 정확히 맞는 ${formatN(n)}명을 골라 ${k}개 군집으로 나눴습니다.`
       : mode === 'search'
-      ? `모은 ${formatN(state.rows.length)}명 중 문장과 가장 가까운 ${formatN(n)}명을 골라 ${k}개 군집으로 나눴습니다.`
+      ? strongNotice(n, k)
       : `${formatN(n)}명을 ${k}개 군집으로 나눴습니다.`;
-    state.noticeType = 'success';
+    state.noticeType = mode === 'search' && !state.conditionOnly && state.strongInfo && !state.strongInfo.count ? 'warn' : 'success';
   } catch (e) {
     const msg = String(e?.message || e);
     if (msg === 'CANCELLED') { state.notice = 'AI 분석을 중지했습니다. 이미 분석한 사람은 저장되어 다음에 이어서 진행됩니다.'; state.noticeType = 'info'; }
@@ -2081,13 +2262,13 @@ function saveExcel(kind) {
   const items = isRaw ? state.rows.map(row => ({ row })) : (state.picked || []);
   if (!items.length) { toast('저장할 데이터가 없습니다.'); return; }
   const cols = rowColumns(items[0].row);
-  const head = isRaw ? ['이름'] : ['이름', '관련도', '군집', '군집 특징'];
+  const head = isRaw ? ['이름'] : ['이름', '관련도', '군집', '군집 특징', '근거 문장'];
   const aoa = [[...head, ...cols.map(fieldLabel)]];
   items.forEach(p => {
     const lead = [personaName(p.row)];
     if (!isRaw) {
       const c = state.clusters[p.cluster];
-      lead.push(p.rel ?? '', c ? clusterName(c) : '', c ? c.terms.join(', ') : '');
+      lead.push(p.rel ?? '', c ? clusterName(c) : '', c ? c.terms.join(', ') : '', p.evidence ? p.evidence.text : '');
     }
     aoa.push([...lead, ...cols.map(col => (p.row[col] == null ? '' : cellText(p.row[col])))]);
   });
@@ -2176,7 +2357,7 @@ const LABEL_TO_COL = (() => {
   for (const [col, label] of Object.entries(LABELS)) if (!m.has(label)) m.set(label, col);
   return m;
 })();
-const EXCEL_SKIP = new Set(['이름', '관련도', '군집', '군집 특징']);
+const EXCEL_SKIP = new Set(['이름', '관련도', '군집', '군집 특징', '근거 문장']);
 function readExcelProject(buffer) {
   if (typeof XLSX === 'undefined') throw new Error('엑셀 라이브러리를 불러오지 못했습니다.');
   const wb = XLSX.read(buffer, { type: 'array' });
@@ -2612,6 +2793,7 @@ function personaCard(p, i) {
     <h3><span>${esc(personaTitle(row))}</span>${p.rel != null ? `<span class="score-badge">관련도 ${p.rel}</span>` : '<i data-lucide="chevron-right"></i>'}</h3>
     ${role ? `<p class="persona-role">${esc(role)}</p>` : ''}
     <div class="persona-meta">${c ? `<span class="cl-tag"><span class="cl-dot" style="background:${c.color}"></span>${esc(clusterName(c))}</span>` : ''}${personaChips(row).map(x => `<span class="status-chip">${esc(x)}</span>`).join('')}</div>
+    ${p.evidence ? `<p class="evidence"><b>근거 · ${esc(p.evidence.label)}</b>${esc(p.evidence.text)}</p>` : ''}
     <p class="persona-summary">${esc(personaSummary(row) || '요약 정보가 없습니다. 눌러서 원본 데이터를 확인하세요.')}</p>
   </button>`;
 }
@@ -2682,7 +2864,7 @@ function renderResult(app) {
 
     <h3 class="sub-heading">몇 명을 고를까요?</h3>
     <div class="chip-row" style="margin-top:0">${PICK_OPTIONS.map(p => `<button class="chip-btn ${String(state.pick) === String(p) ? 'on' : ''}" data-pick="${p}">${p === 'auto' ? 'AI가 판단' : p + '명'}</button>`).join('')}</div>
-    <p class="helper">‘AI가 판단’은 문장과 특히 가까운 사람만 골라냅니다 (최소 ${AUTO_MIN}명 · 최대 ${AUTO_MAX}명).</p>
+    <p class="helper">‘AI가 판단’은 문장과 뚜렷하게 맞는 사람만 골라냅니다 (최대 ${AUTO_MAX}명). 맞는 사람이 적으면 적은 대로 보여 줍니다.</p>
     ${conditions}
 
     ${firstDownload ? `<div class="message message-warn" style="margin-top:18px">처음 한 번은 AI 모델 <b>약 ${MODEL_MB}MB</b>(GPU를 쓸 수 있는 기기는 약 ${GPU_MODEL_MB}MB)를 내려받습니다. 와이파이에서 진행하길 권합니다. 받은 모델은 브라우저에 저장되어 다음부터는 바로 시작됩니다.</div>` : ''}
@@ -3048,7 +3230,7 @@ document.addEventListener('keydown', e => { if (e.key === 'Escape') closeSheet()
 })();
 
 // 테스트용 진입점 (화면에는 영향 없음)
-window.__personaAI = { state, importCollectionFiles, eduLevelOfValue, maritalOfValue, queryRemainder, hintPlans, parseHints, kmeans, chooseK, rowTokens, clusterTerms, passageText, workerCode };
+window.__personaAI = { state, importCollectionFiles, chunkTexts, lexicalUnits, findEvidence, eduLevelOfValue, maritalOfValue, queryRemainder, hintPlans, parseHints, kmeans, chooseK, rowTokens, clusterTerms, passageText, workerCode };
 
 render();
 })();
