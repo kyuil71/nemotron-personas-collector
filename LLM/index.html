@@ -1,0 +1,2646 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0f172a">
+<title>Persona AI Finder</title>
+  <!-- 홈 화면에 추가해 실행하면 주소창 없이 전체 화면으로 열림 -->
+  <link rel="manifest" href="manifest.webmanifest" />
+  <link rel="icon" href="../icon.svg" type="image/svg+xml" />
+  <link rel="apple-touch-icon" href="../icon.svg" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+  <meta name="apple-mobile-web-app-title" content="Persona AI" />
+<link rel="preconnect" href="https://cdn.jsdelivr.net">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard/dist/web/static/pretendard.css">
+<script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
+<script src="https://unpkg.com/lucide@latest"></script>
+<style>
+:root{
+  --navy:#0f172a; --navy-2:#1e3a8a; --blue:#2563eb; --blue-soft:#eff6ff;
+  --s900:#0f172a; --s800:#1e293b; --s700:#334155; --s600:#475569; --s500:#5b6b80;
+  --s400:#7c8ca1; --s300:#cbd5e1; --s200:#e2e8f0; --s100:#f1f5f9; --s50:#f8fafc;
+  --white:#fff; --danger:#b42318; --danger-bg:#fff1f0; --success:#047857; --success-bg:#ecfdf5;
+  --warn:#8a4b09; --warn-bg:#fffbeb;
+  --frame:430px; --ease:cubic-bezier(.22,1,.36,1);
+}
+*{box-sizing:border-box} html{background:var(--s50);overscroll-behavior-y:none}
+body{margin:0;min-height:100vh;min-height:100dvh;background:var(--s50);color:var(--s900);
+  font:17px/1.62 Pretendard,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+  -webkit-font-smoothing:antialiased;-webkit-tap-highlight-color:transparent;overscroll-behavior-y:none}
+button,input,textarea,select{font:inherit}
+button{border:0;cursor:pointer;background:none;color:inherit}
+button:disabled{cursor:not-allowed;opacity:.45}
+a{color:inherit}[hidden]{display:none!important}
+.app-frame{position:relative;width:min(100%,var(--frame));min-height:100vh;min-height:100dvh;margin:auto;overflow:hidden;background:var(--white);box-shadow:0 25px 55px #0f172a24}
+.screen{min-height:100vh;min-height:100dvh}
+.fade-in{animation:fade-in .34s var(--ease) both}
+@keyframes fade-in{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
+@media(prefers-reduced-motion:reduce){*,*:before,*:after{animation-duration:.01ms!important;animation-iteration-count:1!important;transition-duration:.01ms!important}.spinner{animation:spin 1s linear infinite!important}}
+
+/* ── 헤더 ── */
+.app-header{position:sticky;top:0;z-index:20;display:grid;grid-template-columns:48px 1fr 98px;align-items:center;min-height:86px;padding:max(12px,env(safe-area-inset-top)) 14px 10px;color:#fff;background:#0f172afa;backdrop-filter:blur(16px)}
+.header-actions{display:flex;gap:4px;justify-content:flex-end}
+.icon-button{display:grid;place-items:center;width:46px;height:46px;padding:0;border-radius:14px;color:var(--s500)}
+.header-button{color:#fff;background:#ffffff1a}
+.header-button:disabled{opacity:.3}
+.icon-button svg{width:23px;height:23px}
+.header-title{min-width:0;text-align:center}
+.header-title strong{display:block;overflow:hidden;font-size:19px;font-weight:800;text-overflow:ellipsis;white-space:nowrap}
+.header-title small{display:block;margin-bottom:2px;color:#9dc7fd;font-size:16px;font-weight:800;letter-spacing:.02em}
+.step-area{padding:22px 16px 0;background:#fff}
+.step-meta{display:flex;justify-content:space-between;color:var(--blue);font-size:16px;font-weight:850;letter-spacing:.04em}
+.step-area h1{margin:9px 0 18px;font-size:31px;font-weight:900;line-height:1.18;letter-spacing:-.035em}
+.progress-track{height:5px;overflow:hidden;border-radius:999px;background:var(--s100)}
+.progress-track i{display:block;height:100%;border-radius:inherit;background:var(--blue);transition:width .35s var(--ease)}
+
+/* ── 인트로 ── */
+.api-screen{display:flex;flex-direction:column;justify-content:center;padding:46px 32px calc(42px + env(safe-area-inset-bottom));text-align:center;background:#fff}
+.hero-icon{display:grid;place-items:center;width:96px;height:96px;margin:0 auto 32px;border-radius:50%;color:#fff;background:var(--blue);box-shadow:0 10px 32px #2563eb61}
+.hero-icon svg{width:48px;height:48px;stroke-width:2.2}
+.hero-title{margin:0;color:var(--s900);font-size:clamp(42px,12vw,52px);font-weight:900;font-style:italic;line-height:1.08;letter-spacing:-.055em}
+.hero-subtitle{margin:22px 0 38px;color:var(--s500);font-size:17px;font-weight:600;line-height:1.75}
+
+/* ── 카드 · 본문 ── */
+.content{padding:20px 16px 150px;background:#fff}
+.content.no-bottom{padding-bottom:44px}
+.card{margin:0 0 18px;padding:21px 19px;border:1px solid var(--s100);border-radius:24px;background:#fff;box-shadow:0 8px 24px #0f172a0d}
+.card-dark{color:#fff;background:var(--navy);border-color:var(--navy);box-shadow:0 18px 40px #0f172a33}
+.eyebrow{margin-bottom:10px;color:var(--blue);font-size:16px;font-weight:900;letter-spacing:.1em;text-transform:uppercase}
+.card-dark .eyebrow{color:#7db4fb}
+.display-title{margin:0 0 13px;font-size:28px;font-weight:900;line-height:1.25;letter-spacing:-.035em}
+.body-copy{margin:0;color:var(--s600);font-size:17px;font-weight:520;line-height:1.7}
+.card-dark .body-copy{color:#d6dfeb}
+.section-heading{margin:28px 0 10px;font-size:23px;font-weight:900;letter-spacing:-.025em}
+.sub-heading{display:block;margin:24px 0 11px;color:var(--blue);font-size:19px;font-weight:900;letter-spacing:-.02em}
+.helper{margin:12px 2px 0;color:var(--s500);font-size:16px;line-height:1.65}
+
+/* ── 버튼 ── */
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:10px;min-height:58px;padding:15px 20px;border-radius:18px;font-size:18px;font-weight:800;line-height:1.3;text-decoration:none;transition:.15s}
+.btn:active:not(:disabled){transform:scale(.98)}
+.btn svg{width:22px;height:22px}
+.btn-full{width:100%}
+.btn-primary{color:#fff;background:var(--navy-2);box-shadow:0 8px 22px #1e3a8a2e}
+.btn-primary:hover:not(:disabled){background:#1d4ed8}
+.btn-dark{color:#fff;background:var(--navy);box-shadow:0 10px 28px #0f172a29}
+.btn-outline{color:var(--s900);background:#fff;border:2px solid var(--s200)}
+.btn-outline:hover:not(:disabled){border-color:var(--s300);background:var(--s50)}
+.btn-small{min-height:50px;padding:11px 15px;border-radius:15px;font-size:17px}
+.bottom-bar{position:fixed;z-index:30;bottom:0;left:50%;width:min(100%,var(--frame));padding:14px 16px calc(14px + env(safe-area-inset-bottom));transform:translateX(-50%);border-top:1px solid var(--s100);background:#fffffff2;backdrop-filter:blur(16px)}
+.bottom-stack{display:grid;gap:9px}
+.btn-row{display:grid;grid-template-columns:1fr 1fr;gap:9px}
+
+/* ── 메시지 ── */
+.message{margin:0 0 18px;padding:15px 16px;border-radius:15px;text-align:left;font-size:16px;font-weight:620;line-height:1.65}
+.message-error{color:var(--danger);background:var(--danger-bg);border:1px solid #ffd5d2}
+.message-success{color:var(--success);background:var(--success-bg);border:1px solid #bbf7d0}
+.message-info{color:#1a4bc4;background:var(--blue-soft);border:1px solid #dbeafe}
+.message-warn{color:var(--warn);background:var(--warn-bg);border:1px solid #fde68a}
+
+/* ── 선택 카드 ── */
+.country-list,.size-list{display:grid;gap:12px}
+.country-card{display:grid;grid-template-columns:56px 1fr 28px;align-items:center;gap:14px;width:100%;padding:17px 18px;border:2px solid var(--s100);border-radius:22px;text-align:left;background:#fff;transition:.16s}
+.country-card:hover{border-color:var(--s300)}
+.country-card.selected{border-color:var(--blue);background:var(--blue-soft);box-shadow:0 8px 22px #2563eb1c}
+.country-mark{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:7px;width:56px;min-width:56px}
+.country-code{display:block;color:var(--s700);font-size:14px;font-weight:900;line-height:1;letter-spacing:.08em;text-align:center}
+.country-card.selected .country-code{color:var(--blue)}
+.country-flag-emoji{display:grid;place-items:center;width:38px;height:38px;border-radius:50%;overflow:hidden;background:#fff;box-shadow:0 3px 9px #0f172a24,0 0 0 1px #0f172a12;transition:transform .16s var(--ease),box-shadow .16s var(--ease)}
+.country-card:hover .country-flag-emoji{transform:translateY(-1px) scale(1.04);box-shadow:0 5px 12px #0f172a2b,0 0 0 1px #0f172a12}
+.country-card.selected .country-flag-emoji{box-shadow:0 5px 14px #2563eb33,0 0 0 2px #2563eb22}
+.country-flag-svg{display:block;width:100%;height:100%;border-radius:50%;overflow:hidden}
+.country-card h3{margin:0 0 4px;font-size:21px;font-weight:900;letter-spacing:-.02em}
+.country-card p{margin:0;color:var(--s500);font-size:16px;font-weight:600;word-break:break-all}
+.check-dot{display:grid;place-items:center;width:28px;height:28px;border:2px solid var(--s300);border-radius:50%;color:#fff}
+.selected .check-dot{border-color:var(--blue);background:var(--blue)}
+.check-dot svg{width:16px;height:16px;stroke-width:3.2}
+.size-card{display:grid;grid-template-columns:1fr 28px;align-items:center;gap:14px;width:100%;padding:17px 18px;border:2px solid var(--s100);border-radius:22px;text-align:left;background:#fff;transition:.16s}
+.size-card:hover{border-color:var(--s300)}
+.size-card.selected{border-color:var(--blue);background:var(--blue-soft);box-shadow:0 8px 22px #2563eb1c}
+.size-card b{display:block;font-size:22px;font-weight:900;letter-spacing:-.02em}
+.size-card em{display:block;margin-top:6px;color:var(--s600);font-size:17px;font-weight:700;font-style:normal;line-height:1.5}
+.size-card.selected em{color:#1a4bc4}
+.size-card .warn-tag{display:inline-block;margin-top:8px;padding:4px 11px;border-radius:999px;color:var(--warn);background:var(--warn-bg);font-size:16px;font-weight:800}
+
+/* ── 요약 숫자 ── */
+.facts{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin-top:18px}
+.fact{min-width:0;padding:13px 8px;border-radius:15px;text-align:center;background:var(--blue-soft)}
+.fact small{display:block;color:var(--s600);font-size:16px;font-weight:750}
+.fact strong{display:block;margin-top:5px;overflow:hidden;color:var(--navy);font-size:18px;font-weight:900;letter-spacing:-.03em;text-overflow:ellipsis;white-space:nowrap}
+.card-dark .fact small{color:var(--s600)}
+.card-dark .fact strong{color:var(--navy)}
+
+/* ── 조건 행 ── */
+.filter-list{display:grid;gap:10px}
+.filter-row{display:grid;grid-template-columns:1fr auto 22px;align-items:center;gap:10px;width:100%;padding:17px 17px;border:1.5px solid var(--s200);border-radius:20px;background:#fff;text-align:left;transition:.15s}
+.filter-row:hover{border-color:var(--s300);background:var(--s50)}
+.filter-row.active{border-color:var(--blue);background:var(--blue-soft)}
+.fr-label{min-width:0;font-size:18px;font-weight:800;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.fr-value{max-width:150px;overflow:hidden;color:var(--s500);font-size:17px;font-weight:700;text-align:right;text-overflow:ellipsis;white-space:nowrap}
+.filter-row.active .fr-value{color:var(--blue)}
+.filter-row svg{width:20px;height:20px;color:var(--s400)}
+details.more{margin-top:12px}
+details.more summary{cursor:pointer;padding:13px 4px;color:var(--blue);font-size:17px;font-weight:800;list-style:none}
+details.more summary::-webkit-details-marker{display:none}
+details.more summary:before{content:"＋ "}
+details.more[open] summary:before{content:"－ "}
+
+/* ── 칩 · 스위치 ── */
+.chip-row{display:flex;flex-wrap:wrap;gap:8px;margin-top:13px}
+.chip-btn{padding:12px 17px;border:1.5px solid var(--s200);border-radius:999px;color:var(--s700);background:#fff;font-size:17px;font-weight:800;transition:.15s}
+.chip-btn.on{color:#fff;background:var(--blue);border-color:var(--blue);box-shadow:0 6px 16px #2563eb33}
+.switch-row{display:flex;align-items:center;justify-content:space-between;gap:14px;margin-top:18px;padding:15px 16px;border-radius:18px;background:var(--s50)}
+.switch-row span{font-size:17px;font-weight:750}
+.switch-row em{display:block;margin-top:4px;color:var(--s500);font-size:16px;font-weight:600;font-style:normal;line-height:1.55}
+.switch{position:relative;flex:0 0 56px;width:56px;height:33px;border-radius:999px;background:var(--s300);transition:.18s}
+.switch:after{content:"";position:absolute;top:3px;left:3px;width:27px;height:27px;border-radius:50%;background:#fff;box-shadow:0 2px 6px #0f172a2e;transition:.18s var(--ease)}
+.switch.on{background:var(--blue)}
+.switch.on:after{transform:translateX(23px)}
+
+/* ── 입력 ── */
+.text-input,.text-area{width:100%;padding:15px 16px;border:1.5px solid var(--s200);border-radius:18px;color:var(--s900);background:var(--s50);font-size:17px;font-weight:560;outline:0;transition:.18s}
+.text-area{min-height:106px;resize:vertical;line-height:1.65}
+.text-input:focus,.text-area:focus{border-color:var(--blue);background:#fff;box-shadow:0 0 0 4px #2563eb1c}
+.text-input::placeholder,.text-area::placeholder{color:var(--s400)}
+.example-box{margin-top:13px;padding:16px;border:1px solid #dbeafe;border-radius:18px;background:var(--blue-soft)}
+.example-box b{display:block;margin-bottom:11px;color:var(--blue);font-size:16px;font-weight:900;letter-spacing:.06em}
+.example-box p{margin:12px 0 0;color:var(--s600);font-size:16px;line-height:1.6}
+.example-chips{display:flex;flex-wrap:wrap;gap:7px}
+.example-chip{padding:9px 14px;border:1px solid #c7ddfc;border-radius:999px;color:#1a4bc4;background:#fff;font-size:17px;font-weight:750;transition:.14s}
+.example-chip:hover{background:#dbeafe;border-color:var(--blue)}
+.example-chip:active{transform:scale(.96)}
+.range-row{display:grid;grid-template-columns:1fr 24px 1fr;align-items:center;gap:10px;margin-top:16px}
+.range-row span{text-align:center;color:var(--s500);font-size:18px;font-weight:800}
+.match-line{margin:16px 0 0;padding:15px 16px;border-radius:16px;background:var(--blue-soft);border:1px solid #dbeafe;color:var(--s700);font-size:17px;font-weight:750;text-align:center;line-height:1.6}
+.match-line b{color:#1a4bc4;font-size:19px;font-weight:900}
+
+/* ── 로딩 ── */
+.loading-card{padding:34px 20px;text-align:center}
+.spinner{display:block;width:62px;height:62px;margin:0 auto 26px;border:6px solid var(--s100);border-top-color:var(--blue);border-right-color:#60a5fa;border-radius:50%;animation:spin .85s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+.work-progress{position:relative;height:8px;margin:24px 0 12px;overflow:hidden;border-radius:999px;background:var(--s100)}
+.work-progress i{display:block;height:100%;border-radius:inherit;background:var(--blue);transition:width .35s var(--ease)}
+.work-progress:after{content:"";position:absolute;inset:0;transform:translateX(-100%);background:linear-gradient(90deg,transparent,#ffffffb8,transparent);animation:sweep 1.4s infinite}
+@keyframes sweep{to{transform:translateX(100%)}}
+.progress-caption{display:flex;justify-content:space-between;color:var(--s600);font-size:16px;font-weight:750}
+
+/* ── 페르소나 카드 ── */
+.persona-list{display:grid;gap:12px;max-width:100%}
+.persona-card{width:100%;max-width:100%;padding:19px;border:1.5px solid var(--s100);border-radius:22px;text-align:left;background:#fff;transition:.15s;overflow:hidden;overflow-wrap:anywhere;word-break:break-word}
+.persona-card:hover{border-color:var(--s300);background:var(--s50)}
+.persona-card h3{display:flex;align-items:flex-start;justify-content:space-between;gap:10px;margin:0 0 4px;font-size:22px;font-weight:900;line-height:1.3;letter-spacing:-.025em}
+.persona-card h3 span{min-width:0;flex:1 1 auto;overflow-wrap:anywhere;word-break:break-word}
+.persona-card h3 i{flex:0 0 auto;color:var(--s300);margin-top:3px}
+.persona-card h3 svg{width:20px;height:20px}
+.persona-role{margin:0 0 11px;color:var(--blue);font-size:17px;font-weight:800;line-height:1.45}
+.persona-meta{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:11px}
+.status-chip{display:inline-flex;align-items:center;max-width:100%;min-height:30px;padding:4px 11px;border-radius:999px;color:#1a4bc4;background:#dbeafe;font-size:16px;font-weight:800;overflow-wrap:anywhere;word-break:break-word}
+.persona-summary{margin:0;color:var(--s600);font-size:17px;font-weight:520;line-height:1.7;overflow-wrap:anywhere;word-break:break-word}
+.list-more{margin-top:14px}
+
+/* ── 바텀시트 ── */
+.modal-backdrop{position:fixed;z-index:100;inset:0;display:flex;align-items:flex-end;justify-content:center;padding-top:40px;background:#0f172a9e}
+.modal-sheet{display:flex;flex-direction:column;width:min(100%,var(--frame));max-height:88vh;padding:0 16px calc(20px + env(safe-area-inset-bottom));border-radius:30px 30px 0 0;background:#fff;animation:sheet-up .3s var(--ease) both}
+@keyframes sheet-up{from{transform:translateY(30px);opacity:.65}}
+.modal-head{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:20px 0 14px;border-bottom:1px solid var(--s100)}
+.modal-head h2{margin:0;font-size:22px;font-weight:900;letter-spacing:-.02em}
+.modal-head .icon-button{background:var(--s100);color:var(--s700)}
+.modal-body{flex:1;overflow:auto;padding:14px 0}
+.modal-foot{display:grid;grid-template-columns:1fr 1fr;gap:9px;padding-top:12px;border-top:1px solid var(--s100)}
+.opt-line{display:flex;align-items:center;gap:12px;width:100%;padding:14px 12px;border-radius:15px;text-align:left;font-size:18px;font-weight:650;transition:.12s}
+.opt-line:hover{background:var(--s50)}
+.opt-line.on{background:var(--blue-soft);color:#1a4bc4;font-weight:800}
+.opt-text{min-width:0;flex:1 1 auto;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.opt-count{flex:0 0 auto;color:var(--s500);font-size:16px;font-weight:800}
+.opt-line.on .opt-count{color:#1a4bc4}
+.opt-mark{display:grid;place-items:center;flex:0 0 28px;width:28px;height:28px;border:2px solid var(--s300);border-radius:50%;background:#fff;color:#fff}
+.opt-line.on .opt-mark{border-color:var(--blue);background:var(--blue)}
+.opt-mark svg{width:16px;height:16px;stroke-width:3.4}
+.raw-field{margin-top:10px;padding:14px 15px;border-radius:15px;background:var(--s50)}
+.raw-field b{display:block;margin-bottom:5px;color:var(--blue);font-size:16px;font-weight:900;letter-spacing:.02em}
+.raw-field span{display:block;color:var(--s700);font-size:17px;line-height:1.7;word-break:break-word;white-space:pre-line}
+
+.toast{position:fixed;z-index:200;top:calc(18px + env(safe-area-inset-top));left:50%;width:min(calc(100% - 32px),398px);padding:15px 17px;transform:translateX(-50%);border-radius:15px;color:#fff;background:var(--s900);box-shadow:0 15px 35px #0f172a40;font-size:17px;font-weight:750;text-align:center;animation:toast-in .25s var(--ease) both}
+@keyframes toast-in{from{opacity:0;transform:translate(-50%,-10px)}}
+.foot-note{margin:28px 2px 0;color:var(--s500);font-size:16px;line-height:1.75;text-align:center}
+.foot-note a{color:var(--blue);font-weight:700}
+@media(max-width:380px){
+  .content,.step-area,.bottom-bar{padding-left:13px;padding-right:13px}
+  .card{padding:18px 15px}.hero-title{font-size:40px}
+  .fact small{font-size:16px}.fact strong{font-size:17px}
+}
+
+/* ── AI 전용 ── */
+.ai-status{display:inline-flex;align-items:center;gap:7px;margin-top:14px;padding:7px 13px;border-radius:999px;background:#ffffff1a;color:#d6dfeb;font-size:16px;font-weight:800}
+.ai-status.ok{background:#10b98126;color:#a7f3d0}
+.ai-status svg{width:18px;height:18px}
+.lang-row{display:flex;flex-wrap:wrap;gap:6px;margin-top:12px}
+.lang-pill{padding:5px 11px;border-radius:999px;background:var(--s100);color:var(--s600);font-size:16px;font-weight:800}
+.hint-box{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin-top:12px}
+.hint-box:empty{display:none}
+.hint-label{color:var(--s500);font-size:16px;font-weight:800}
+.hint-chip{display:inline-flex;align-items:center;gap:6px;padding:8px 13px;border:1.5px solid var(--blue);border-radius:999px;color:#1a4bc4;background:var(--blue-soft);font-size:16px;font-weight:800}
+.hint-chip.off{border-color:var(--s200);color:var(--s400);background:#fff;text-decoration:line-through}
+.hint-chip svg{width:16px;height:16px}
+.btn-ai{color:#fff;background:linear-gradient(135deg,#1e3a8a,#4f46e5);box-shadow:0 10px 26px #4f46e540}
+.score-badge{flex:0 0 auto;padding:3px 10px;border-radius:999px;background:#eef2ff;color:#4338ca;font-size:16px;font-weight:900;line-height:1.5}
+.cl-tag{display:inline-flex;align-items:center;gap:6px;min-height:30px;padding:4px 11px;border-radius:999px;background:var(--s100);color:var(--s700);font-size:16px;font-weight:800}
+.cl-dot{display:inline-block;flex:0 0 12px;width:12px;height:12px;border-radius:50%}
+.scatter-wrap{position:relative;margin-top:14px;border:1px solid var(--s100);border-radius:20px;background:var(--s50);overflow:hidden}
+.scatter-wrap canvas{display:block;width:100%;height:280px;touch-action:manipulation}
+.scatter-note{position:absolute;right:12px;bottom:8px;color:var(--s400);font-size:16px;font-weight:700;pointer-events:none}
+.cluster-list{display:grid;gap:10px;margin-top:14px}
+.cluster-card{display:block;width:100%;padding:16px 17px;border:2px solid var(--s100);border-radius:20px;text-align:left;background:#fff;transition:.15s;overflow-wrap:anywhere}
+.cluster-card.on{border-color:var(--blue);background:var(--blue-soft)}
+.cluster-head{display:flex;align-items:center;gap:10px;margin-bottom:8px}
+.cluster-head b{flex:1 1 auto;font-size:19px;font-weight:900;letter-spacing:-.02em}
+.cluster-head span{color:var(--s500);font-size:16px;font-weight:800}
+.cluster-terms{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:8px}
+.term{padding:4px 10px;border-radius:999px;background:#fff;border:1px solid var(--s200);color:var(--s700);font-size:16px;font-weight:750}
+.cluster-card.on .term{border-color:#c7ddfc}
+.cluster-profile{margin:0;color:var(--s600);font-size:16px;font-weight:650;line-height:1.6}
+.cluster-rep{margin:6px 0 0;color:var(--s500);font-size:16px;font-weight:650;line-height:1.6}
+.k-row{display:flex;flex-wrap:wrap;gap:7px;margin-top:12px}
+.k-btn{min-width:48px;padding:10px 14px;border:1.5px solid var(--s200);border-radius:999px;color:var(--s700);background:#fff;font-size:16px;font-weight:800}
+.k-btn.on{color:#fff;background:var(--blue);border-color:var(--blue)}
+.phase-list{display:grid;gap:8px;margin-top:20px;text-align:left}
+.phase{display:flex;align-items:center;gap:10px;color:var(--s400);font-size:16px;font-weight:750}
+.phase.now{color:var(--blue)}
+.phase.done{color:var(--success)}
+.phase svg{width:19px;height:19px}
+.persona-card h3 .score-badge{flex:0 0 auto;min-width:auto}
+</style>
+</head>
+<body>
+<div id="app" class="app-frame" aria-live="polite"></div>
+<div id="modal" hidden></div>
+<div id="toast" class="toast" role="status" hidden></div>
+<noscript>이 프로그램을 사용하려면 브라우저의 JavaScript를 켜 주세요.</noscript>
+
+<script>
+(() => {
+'use strict';
+
+/* ===================================================================
+ * Persona AI Finder — 모바일 단일 파일
+ * 1) Hugging Face 공개 API로 Nemotron-Personas를 조건 없이 모은다
+ * 2) multilingual-e5-small(MIT)로 휴대폰 안에서 각 페르소나를 벡터로 바꾼다
+ * 3) 사용자가 쓴 문장과 의미가 가까운 사람을 골라내고, k-means로 군집을 나눈다
+ * 모델은 처음 1회 Hugging Face에서 자동으로 내려받아 브라우저에 저장된다.
+ * =================================================================== */
+
+const COUNTRIES = [
+  { id:'kr', name:'대한민국', en:'Korea',  flag:'🇰🇷', lang:'ko', langName:'한국어',    dataset:'nvidia/Nemotron-Personas-Korea' },
+  { id:'us', name:'미국',     en:'USA',    flag:'🇺🇸', lang:'en', langName:'영어',      dataset:'nvidia/Nemotron-Personas-USA' },
+  { id:'jp', name:'일본',     en:'Japan',  flag:'🇯🇵', lang:'ja', langName:'일본어',    dataset:'nvidia/Nemotron-Personas-Japan' },
+  { id:'fr', name:'프랑스',   en:'France', flag:'🇫🇷', lang:'fr', langName:'프랑스어',  dataset:'nvidia/Nemotron-Personas-France' },
+  { id:'br', name:'브라질',   en:'Brazil', flag:'🇧🇷', lang:'pt', langName:'포르투갈어', dataset:'nvidia/Nemotron-Personas-Brazil' },
+  { id:'in', name:'인도',     en:'India',  flag:'🇮🇳', lang:'en', langName:'영어·힌디어', dataset:'nvidia/Nemotron-Personas-India' },
+];
+const SPLIT_INFO = {
+  en_IN:      { label:'English',              lang:'en' },
+  hi_Deva_IN: { label:'हिन्दी (데바나가리 힌디어)', lang:'hi' },
+  hi_Latn_IN: { label:'Hinglish (로마자 힌디어)',  lang:'en' },
+};
+
+// ---- AI 모델 ----------------------------------------------------------
+const MODEL_ID = 'Xenova/multilingual-e5-small';          // MIT · 100개 이상 언어
+const MODEL_DTYPE = 'q8';                                   // 8비트 양자화 (약 130MB)
+const MODEL_MB = 130;
+const TJS_URL = 'https://cdn.jsdelivr.net/npm/@huggingface/transformers@4.3.2/dist/transformers.min.js';
+const MAX_TOKENS = 192;
+const EMBED_BATCH = 16;
+const PASSAGE_CHARS = 900;
+const VEC_VERSION = `${MODEL_ID}|${MODEL_DTYPE}|${MAX_TOKENS}|p1`;
+const EMBED_RATE_GUESS = 15;   // 명/초 (휴대폰 기준 대략값)
+
+const PICK_OPTIONS = ['auto', 30, 50, 100, 200, 500];
+const K_OPTIONS = ['auto', 2, 3, 4, 5, 6, 7, 8];
+const AUTO_MIN = 10, AUTO_MAX = 500;
+const CLUSTER_COLORS = ['#2563eb', '#e8590c', '#0f9d58', '#c2255c', '#7048e8', '#0c8599', '#b08400', '#5c677d'];
+
+// ---- 수집 -------------------------------------------------------------
+const API = 'https://datasets-server.huggingface.co';
+const PAGE = 100;
+const TARGET_OPTIONS = [1000, 3000, 5000, 10000];
+const HEAVY_FROM = 10000;
+const HARD_CAP = 30000;
+const CAT_MAX = 200;
+const LONG_TEXT_LEN = 90;
+const FIELD_SCAN_ROWS = 30000;
+const PREVIEW_STEP = 20;
+const DEFAULT_ROW_BYTES = 5200;
+
+const REQUEST_GAP_MS = 1100;
+const REQUEST_GAP_MAX_MS = 8000;
+const RATE_LIMIT_FALLBACK_MS = 25000;
+const RATE_LIMIT_MAX_SLEEP_MS = 4 * 60 * 1000;
+const NETWORK_RETRY_BASE_MS = 4000;
+const SERVER_RETRY_BASE_MS = 5000;
+const SINGLE_REQUEST_MAX_WAIT_MS = 8 * 60 * 1000;
+
+const FALLBACK_COLUMNS = ['uuid','sex','age','occupation','education_level','persona','professional_persona'];
+
+const LABELS = {
+  uuid:'고유ID', id:'ID', person_id:'인물 ID',
+  sex:'성별', gender:'성별', age:'나이', birth_year:'출생연도', age_group:'연령대',
+  marital_status:'혼인상태', relationship_status:'관계상태', military_status:'병역상태',
+  education_level:'학력', education:'학력', highest_education:'최종학력',
+  bachelors_field:'전공계열', field_of_study:'전공', major:'전공',
+  occupation:'직업', job:'직업', employment_status:'고용상태', industry:'산업', work_status:'근로형태',
+  family_type:'가족형태', household_type:'가구형태', housing_type:'주거형태', household_size:'가구원수',
+  income:'소득', income_level:'소득수준', income_bracket:'소득구간',
+  country:'국가', region:'지역', area:'권역', province:'시도/주', state:'주/지역', district:'구/군',
+  city:'도시', municipality:'시군구', commune:'코뮌', department:'데파르트망', prefecture:'현/도도부현',
+  sigungu:'시군구', sido:'시도', county:'카운티', locality:'거주지', urbanization:'도시화 정도',
+  zipcode:'우편번호', postal_code:'우편번호',
+  religion:'종교', language:'언어', mother_tongue:'모국어', ethnicity:'민족', race:'인종',
+  persona:'페르소나 요약', professional_persona:'직업 페르소나', sports_persona:'스포츠 페르소나',
+  arts_persona:'예술 페르소나', travel_persona:'여행 페르소나', culinary_persona:'요리 페르소나',
+  family_persona:'가족 페르소나', cultural_background:'문화적 배경',
+  skills_and_expertise:'기술 및 전문성', hobbies_and_interests:'취미 및 관심사',
+  career_goals_and_ambitions:'경력 목표', personality_traits:'성격 특성',
+};
+
+const DEMOGRAPHIC_PRIORITY = ['sex','gender','age','age_group','marital_status','military_status',
+  'education_level','education','bachelors_field','field_of_study','occupation','job',
+  'employment_status','industry','family_type','household_type','housing_type','income_level',
+  'religion','language','urbanization','country','region','area','state','province','prefecture',
+  'department','district','city','municipality','commune'];
+
+const PREFERRED_ORDER = ['uuid','id','person_id','sex','gender','age','age_group','marital_status',
+  'military_status','family_type','household_type','housing_type','education_level','education',
+  'bachelors_field','field_of_study','occupation','job','employment_status','industry','income_level',
+  'religion','language','country','region','area','state','province','prefecture','department','district',
+  'city','municipality','commune','zipcode','postal_code',
+  'persona','professional_persona','family_persona','cultural_background','skills_and_expertise',
+  'hobbies_and_interests','career_goals_and_ambitions','personality_traits',
+  'sports_persona','arts_persona','travel_persona','culinary_persona'];
+
+// AI가 읽을 글: 앞쪽일수록 잘 반영된다 (최대 MAX_TOKENS 토큰)
+const PASSAGE_FIELDS = ['persona','professional_persona','hobbies_and_interests','career_goals_and_ambitions',
+  'skills_and_expertise','personality_traits','family_persona','cultural_background',
+  'travel_persona','arts_persona','sports_persona','culinary_persona'];
+const PLACE_FIELDS = ['province','state','prefecture','region','department','district','city','municipality','commune'];
+
+const INTERNAL_COL_RE = /^(row_idx|__index_level_0__|index)$/i;
+const ID_COL_RE = /^(uuid|id|person_id)$/i;
+const LOCATION_COL_RE = /(country|region|province|state|district|city|municipality|commune|county|locality|ward|neighborhood|zipcode|postal|sido|sigungu|department|prefecture)/i;
+const LIST_DUP_RE = /_list$/i;
+
+const CJK_RE = /[぀-ヿ㐀-䶿一-鿿]/;
+const HANGUL_RE = /[가-힯]/;
+const NAME_PARTICLES = new Set(['de','da','do','dos','das','del','della','van','von','der','le','la','du','di','bin','al','e','y']);
+
+const QUERY_EXAMPLES = [
+  '새로운 기술을 빨리 받아들이는 30대 직장인',
+  '혼자 사는 60대 이상, 건강 관리에 관심이 많은 사람',
+  '아이를 키우며 일하는 여성',
+  '요리와 여행을 즐기는 사람',
+  '디자인이나 예술 분야에서 일하는 사람',
+  '돈을 아끼고 계획적으로 소비하는 사람',
+];
+
+const VALUE_TRANSLATIONS = new Map(Object.entries({
+  male:'남성', m:'남성', man:'남성', female:'여성', f:'여성', woman:'여성',
+  single:'미혼', unmarried:'미혼', married:'기혼', divorced:'이혼', widowed:'사별', separated:'별거',
+  apartment:'아파트', house:'단독주택', studio:'원룸', owned:'자가', rented:'임대',
+  completed:'완료', exempt:'면제', 'not applicable':'해당 없음',
+  yes:'예', no:'아니오', true:'예', false:'아니오', none:'없음', unknown:'알 수 없음',
+}));
+
+const STOPWORDS = new Set((
+  'the and with for her his she he they their them who that this from has have had are was were is in on of to a an as at by be ' +
+  'or but not also into about while often which whose through its it more both than such well very can will would been being ' +
+  'when where after over under other others own one two many much most some any each every all just only even still yet ' +
+  'enjoys enjoy loves love likes known life lives living way ways time years year day days new people person community local ' +
+  'le la les des une un et du de qui pour dans avec sur est son sa ses elle il ils elles au aux en par que se ne pas plus ' +
+  'leur leurs ce cette ces comme mais aussi tout tous toute très sans entre dont où sont être avoir fait vie ans souvent ' +
+  'o os as da do das dos e em um uma que com para por seu sua seus suas ele ela eles elas no na nos nas se ao à às mais ' +
+  'como mas também muito sua anos vida sempre entre sobre ser ter onde quando ' +
+  'और के की का में है से को पर एक यह वह भी लिए साथ अपने अपनी हैं था थी ' +
+  '그리고 또한 있는 있다 하는 그는 그녀는 그녀 자신의 자신 함께 위해 대한 통해 있으며 좋아하는 즐기는 때문에 가지고 다양한 특히 ' +
+  '있어 하며 하고 이다 있고 것을 것이 것은 그의 그녀의 위한 등을 등의 같은 많은 매우 항상 주로 대해 모든 또는 이를 ' +
+  'する いる ある こと ため よう これ それ もの 彼女 彼 自分 として など ます です した して いて ながら'
+).split(/\s+/).filter(Boolean));
+const KO_SUFFIX_RE = /(으로써|으로서|에게서|에서는|에서도|으로는|이라는|라는|에서|에게|으로|부터|까지|처럼|보다|이며|이고|하고|하는|하며|했던|하던|적인|적으로|들의|들은|들이|들을|은|는|이|가|을|를|의|에|로|와|과|도|만|들)$/;
+
+// ---- 상태 -----------------------------------------------------------
+const state = {
+  screen: 'intro',        // intro | country | meta | size | collecting | result | analyzing
+  country: null,
+  config: 'default', split: 'train', splits: [],
+  total: null, avgRowBytes: DEFAULT_ROW_BYTES,
+  allColumns: [...FALLBACK_COLUMNS],
+  target: 1000, randomStart: false,
+  nextOffset: null,
+  rows: [],
+  filterFields: [], category: {}, ranges: {},
+  query: '', hintsOff: new Set(), pick: 'auto',
+  picked: null,           // [{ row, score, rel, cluster }]
+  lastQuery: '', lastHints: [],
+  kChoice: 'auto', clusters: [], activeCluster: null, scatter: null,
+  previewLimit: PREVIEW_STEP,
+  modelCached: null,
+  ai: { phase: '', dlLoaded: 0, dlTotal: 0, done: 0, todo: 0, startAt: 0 },
+  busy: false, progress: 0, progressText: '', progressSub: '',
+  controller: null, cancelRequested: false,
+  error: '', notice: '', noticeType: 'info',
+};
+
+const requestRuntime = { nextRequestAt: 0, gapMs: REQUEST_GAP_MS, hits: 0, wins: 0, lastOkAt: 0, kind: 'pacing' };
+const nameCache = new WeakMap();
+const passageCache = new WeakMap();
+const tokenCache = new WeakMap();
+const vecKeyCache = new WeakMap();
+const vecStore = new Map();     // vecKey → Float32Array(384)
+
+// ---- 유틸 -----------------------------------------------------------
+const $ = (sel, root = document) => root.querySelector(sel);
+const esc = v => String(v ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const formatN = v => Number(v || 0).toLocaleString('ko-KR');
+const humanize = c => String(c || '').replace(/_/g, ' ').replace(/\b\w/g, m => m.toUpperCase());
+const fieldLabel = c => LABELS[c] || humanize(c);
+const prettyText = v => String(v ?? '').replace(/_/g, ' ').replace(/\s+/g, ' ').trim();
+const renderIcons = () => requestAnimationFrame(() => window.lucide?.createIcons?.());
+const tick = () => new Promise(r => setTimeout(r, 0));
+
+function countryFlagIcon(id) {
+  const open = '<svg class="country-flag-svg" viewBox="0 0 40 40" aria-hidden="true" focusable="false" xmlns="http://www.w3.org/2000/svg">';
+  const close = '</svg>';
+  const flags = {
+    kr: `${open}
+      <rect width="40" height="40" fill="#fff"/>
+      <g transform="rotate(-33 20 20)">
+        <circle cx="20" cy="20" r="8.3" fill="#cd2e3a"/>
+        <path d="M11.7 20a8.3 8.3 0 0 0 16.6 0a8.3 8.3 0 0 1-16.6 0Z" fill="#0047a0"/>
+        <circle cx="20" cy="15.85" r="4.15" fill="#0047a0"/>
+        <circle cx="20" cy="24.15" r="4.15" fill="#cd2e3a"/>
+      </g>
+      <g fill="#111" opacity=".92">
+        <g transform="translate(6 8) rotate(-33)"><rect x="0" y="0" width="8" height="1.3" rx=".5"/><rect x="0" y="2.6" width="8" height="1.3" rx=".5"/><rect x="0" y="5.2" width="8" height="1.3" rx=".5"/></g>
+        <g transform="translate(28 27) rotate(-33)"><rect x="0" y="0" width="8" height="1.3" rx=".5"/><rect x="0" y="2.6" width="3.2" height="1.3" rx=".5"/><rect x="4.8" y="2.6" width="3.2" height="1.3" rx=".5"/><rect x="0" y="5.2" width="8" height="1.3" rx=".5"/></g>
+        <g transform="translate(27 7) rotate(33)"><rect x="0" y="0" width="3.2" height="1.3" rx=".5"/><rect x="4.8" y="0" width="3.2" height="1.3" rx=".5"/><rect x="0" y="2.6" width="8" height="1.3" rx=".5"/><rect x="0" y="5.2" width="3.2" height="1.3" rx=".5"/><rect x="4.8" y="5.2" width="3.2" height="1.3" rx=".5"/></g>
+        <g transform="translate(6 28) rotate(33)"><rect x="0" y="0" width="3.2" height="1.3" rx=".5"/><rect x="4.8" y="0" width="3.2" height="1.3" rx=".5"/><rect x="0" y="2.6" width="3.2" height="1.3" rx=".5"/><rect x="4.8" y="2.6" width="3.2" height="1.3" rx=".5"/><rect x="0" y="5.2" width="3.2" height="1.3" rx=".5"/><rect x="4.8" y="5.2" width="3.2" height="1.3" rx=".5"/></g>
+      </g>${close}`,
+    us: `${open}
+      <rect width="40" height="40" fill="#fff"/>
+      <g fill="#b22234">
+        <rect y="0" width="40" height="3.08"/><rect y="6.16" width="40" height="3.08"/><rect y="12.32" width="40" height="3.08"/><rect y="18.48" width="40" height="3.08"/><rect y="24.64" width="40" height="3.08"/><rect y="30.80" width="40" height="3.08"/><rect y="36.96" width="40" height="3.08"/>
+      </g>
+      <rect width="18.5" height="21.55" fill="#3c3b6e"/>
+      <g fill="#fff"><circle cx="3.2" cy="3.2" r=".72"/><circle cx="7.2" cy="3.2" r=".72"/><circle cx="11.2" cy="3.2" r=".72"/><circle cx="15.2" cy="3.2" r=".72"/><circle cx="5.2" cy="6.8" r=".72"/><circle cx="9.2" cy="6.8" r=".72"/><circle cx="13.2" cy="6.8" r=".72"/><circle cx="3.2" cy="10.4" r=".72"/><circle cx="7.2" cy="10.4" r=".72"/><circle cx="11.2" cy="10.4" r=".72"/><circle cx="15.2" cy="10.4" r=".72"/><circle cx="5.2" cy="14" r=".72"/><circle cx="9.2" cy="14" r=".72"/><circle cx="13.2" cy="14" r=".72"/><circle cx="3.2" cy="17.6" r=".72"/><circle cx="7.2" cy="17.6" r=".72"/><circle cx="11.2" cy="17.6" r=".72"/><circle cx="15.2" cy="17.6" r=".72"/></g>${close}`,
+    jp: `${open}<rect width="40" height="40" fill="#fff"/><circle cx="20" cy="20" r="9.1" fill="#bc002d"/>${close}`,
+    fr: `${open}<rect width="13.34" height="40" fill="#0055a4"/><rect x="13.33" width="13.34" height="40" fill="#fff"/><rect x="26.66" width="13.34" height="40" fill="#ef4135"/>${close}`,
+    br: `${open}<rect width="40" height="40" fill="#009c3b"/><path d="M20 6.3 34.6 20 20 33.7 5.4 20Z" fill="#ffdf00"/><circle cx="20" cy="20" r="7.6" fill="#002776"/><path d="M13.5 18.2c4.6-1.5 9.3-.9 13.5 1.6" fill="none" stroke="#fff" stroke-width="1.25" stroke-linecap="round"/>${close}`,
+    in: `${open}<rect width="40" height="13.34" fill="#ff9933"/><rect y="13.33" width="40" height="13.34" fill="#fff"/><rect y="26.66" width="40" height="13.34" fill="#138808"/><circle cx="20" cy="20" r="4.5" fill="none" stroke="#1a3c8f" stroke-width="1.1"/><g stroke="#1a3c8f" stroke-width=".6"><path d="M20 15.5v9"/><path d="M15.5 20h9"/><path d="m16.8 16.8 6.4 6.4"/><path d="m23.2 16.8-6.4 6.4"/></g><circle cx="20" cy="20" r=".8" fill="#1a3c8f"/>${close}`
+  };
+  return flags[id] || '';
+}
+
+function toast(message) {
+  const node = $('#toast');
+  node.textContent = message;
+  node.hidden = false;
+  clearTimeout(toast._timer);
+  toast._timer = setTimeout(() => { node.hidden = true; }, 2600);
+}
+function normalizeKey(v) { return String(v ?? '').normalize('NFKC').trim().toLowerCase().replace(/\s+/g, ' '); }
+function displayValue(col, raw) {
+  const s = String(raw ?? '');
+  if (!s) return '빈 값';
+  if (LOCATION_COL_RE.test(col)) return s;
+  return VALUE_TRANSLATIONS.get(normalizeKey(s)) || s;
+}
+function normText(v) {
+  return String(v ?? '').normalize('NFKC').toLowerCase()
+    .replace(/[​-‍﻿]/g, '')
+    .replace(/[_\-/,.;:()\[\]{}"'“”‘’·]+/g, ' ')
+    .replace(/\s+/g, ' ').trim();
+}
+function cellText(v) {
+  if (v == null) return '';
+  if (Array.isArray(v)) return v.map(cellText).filter(Boolean).join(', ');
+  if (typeof v === 'object') { try { return JSON.stringify(v); } catch { return String(v); } }
+  return String(v);
+}
+function formatBytes(bytes) {
+  if (!Number.isFinite(bytes) || bytes <= 0) return '—';
+  if (bytes < 1024 * 1024) return `${Math.max(1, Math.round(bytes / 1024))}KB`;
+  const mb = bytes / (1024 * 1024);
+  if (mb < 1024) return `${mb < 10 ? mb.toFixed(1) : Math.round(mb)}MB`;
+  return `${(mb / 1024).toFixed(1)}GB`;
+}
+function formatDuration(seconds) {
+  const s = Math.max(1, Math.round(seconds));
+  if (s < 60) return `약 ${s}초`;
+  const m = Math.round(s / 60);
+  if (m < 60) return `약 ${m}분`;
+  return `약 ${Math.floor(m / 60)}시간 ${m % 60}분`;
+}
+function estimateFor(count) {
+  const capped = state.total != null ? Math.min(count, state.total) : count;
+  const bytes = capped * state.avgRowBytes;
+  const requests = Math.ceil(capped / PAGE);
+  const seconds = requests * (REQUEST_GAP_MS / 1000 + 0.35);
+  const aiSeconds = capped / EMBED_RATE_GUESS;
+  return { capped, bytes, seconds, aiSeconds };
+}
+function fnv(text) {
+  let h = 0x811c9dc5;
+  for (let i = 0; i < text.length; i++) { h ^= text.charCodeAt(i); h = Math.imul(h, 0x01000193); }
+  return (h >>> 0).toString(16);
+}
+function currentLang() {
+  return SPLIT_INFO[state.split]?.lang || state.country?.lang || 'en';
+}
+
+// ---- 화면 꺼짐 방지 -------------------------------------------------
+let wakeLock = null;
+async function keepAwake(on) {
+  try {
+    if (on && !wakeLock && navigator.wakeLock) { wakeLock = await navigator.wakeLock.request('screen'); wakeLock.addEventListener?.('release', () => { wakeLock = null; }); }
+    if (!on && wakeLock) { await wakeLock.release(); wakeLock = null; }
+  } catch { wakeLock = null; }
+}
+document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible' && state.busy) keepAwake(true); });
+
+// ---- 네트워크 -------------------------------------------------------
+function checkCancelled() { if (state.cancelRequested) throw new Error('CANCELLED'); }
+function abortableSleep(ms) {
+  checkCancelled();
+  const signal = state.controller?.signal;
+  return new Promise((resolve, reject) => {
+    if (signal?.aborted) return reject(new Error('CANCELLED'));
+    const timer = setTimeout(() => { signal?.removeEventListener('abort', onAbort); resolve(); }, Math.max(0, ms));
+    function onAbort() { clearTimeout(timer); reject(new Error('CANCELLED')); }
+    signal?.addEventListener('abort', onAbort, { once: true });
+  });
+}
+async function waitWithCountdown(ms, info, onWait) {
+  let remaining = Math.max(0, Math.round(ms));
+  while (remaining > 0) {
+    checkCancelled();
+    onWait?.({ ...info, waitSec: Math.ceil(remaining / 1000) });
+    const part = Math.min(1000, remaining);
+    await abortableSleep(part);
+    remaining -= part;
+  }
+}
+function safeHeader(res, name) { try { return res?.headers?.get(name) || ''; } catch { return ''; } }
+function parseSecondsOrDate(value) {
+  const raw = String(value || '').trim();
+  if (!raw) return null;
+  if (/^\d+(?:\.\d+)?$/.test(raw)) return Math.max(0, Number(raw) * 1000);
+  const at = Date.parse(raw);
+  return Number.isFinite(at) ? Math.max(0, at - Date.now()) : null;
+}
+function retryAfterMs(res) {
+  const direct = parseSecondsOrDate(safeHeader(res, 'retry-after'));
+  if (direct != null) return direct;
+  for (const name of ['ratelimit-reset', 'x-ratelimit-reset']) {
+    const raw = safeHeader(res, name);
+    if (!raw) continue;
+    const n = Number(raw);
+    if (!Number.isFinite(n)) continue;
+    return n > 1000000000 ? Math.max(0, n * 1000 - Date.now()) : Math.max(0, n * 1000);
+  }
+  const rl = safeHeader(res, 'ratelimit');
+  const match = rl.match(/(?:^|[;,]\s*)t\s*=\s*"?(\d+)"?/i) || rl.match(/(?:^|[;,]\s*)reset\s*=\s*"?(\d+)"?/i);
+  return match ? Number(match[1]) * 1000 : null;
+}
+function classifyHttp(status, body) {
+  const b = (body || '').toLowerCase();
+  if (status === 429) return 'rate_limit';
+  if (status === 404) return 'notfound';
+  if (status === 401 || status === 403) return 'auth';
+  if (b.includes('loading') || b.includes('index') || b.includes('try again')) return 'warming';
+  if (status >= 500) return 'server';
+  return 'fatal';
+}
+function retryDelay(kind, attempt, res) {
+  if (kind === 'rate_limit' || kind === 'rate_limit_or_network') {
+    const announced = retryAfterMs(res);
+    if (announced != null) return Math.min(Math.max(announced + 1000, 5000), RATE_LIMIT_MAX_SLEEP_MS);
+    return Math.min(RATE_LIMIT_FALLBACK_MS * Math.pow(2, Math.min(requestRuntime.hits, 3)), RATE_LIMIT_MAX_SLEEP_MS);
+  }
+  if (kind === 'warming') return Math.min(5000 + attempt * 2500, 30000);
+  if (kind === 'server') return Math.min(SERVER_RETRY_BASE_MS * Math.pow(2, Math.min(attempt - 1, 4)), 60000);
+  return Math.min(NETWORK_RETRY_BASE_MS * Math.pow(2, Math.min(attempt - 1, 5)), 120000);
+}
+function noteSuccess() {
+  requestRuntime.wins++;
+  requestRuntime.lastOkAt = Date.now();
+  if (requestRuntime.wins >= 12) {
+    requestRuntime.gapMs = Math.max(REQUEST_GAP_MS, Math.round(requestRuntime.gapMs * 0.9));
+    requestRuntime.hits = Math.max(0, requestRuntime.hits - 1);
+    requestRuntime.wins = 0;
+  }
+  requestRuntime.kind = 'pacing';
+  requestRuntime.nextRequestAt = Date.now() + requestRuntime.gapMs;
+}
+function noteRateLimit(waitMs, kind) {
+  requestRuntime.hits++;
+  requestRuntime.wins = 0;
+  requestRuntime.gapMs = Math.min(REQUEST_GAP_MAX_MS, Math.max(REQUEST_GAP_MS * 2, Math.round(requestRuntime.gapMs * 1.7)));
+  requestRuntime.kind = kind;
+  requestRuntime.nextRequestAt = Date.now() + waitMs;
+}
+async function waitForSlot(onWait) {
+  const remaining = requestRuntime.nextRequestAt - Date.now();
+  if (remaining <= 0) return;
+  if (remaining > 1500 && requestRuntime.kind !== 'pacing') {
+    await waitWithCountdown(remaining, { kind: requestRuntime.kind, attempt: 0 }, onWait);
+  } else {
+    await abortableSleep(remaining);
+  }
+}
+async function fetchJson(url, { maxWaitMs = SINGLE_REQUEST_MAX_WAIT_MS, onWait = null } = {}) {
+  const start = Date.now();
+  let attempt = 0, lastKind = 'network';
+  while (true) {
+    checkCancelled();
+    attempt++;
+    await waitForSlot(onWait);
+    let status = 0, body = '', netErr = null, res = null;
+    try {
+      res = await fetch(url, { mode: 'cors', credentials: 'omit', referrerPolicy: 'no-referrer', signal: state.controller?.signal });
+      status = res.status;
+      if (res.ok) { const data = await res.json(); noteSuccess(); return data; }
+      body = await res.text().catch(() => '');
+    } catch (e) {
+      if (e?.name === 'AbortError' || state.cancelRequested) throw new Error('CANCELLED');
+      netErr = e;
+    }
+    const recentOk = Date.now() - requestRuntime.lastOkAt < 30000;
+    const masked = netErr && recentOk && /fetch|network|load/i.test(String(netErr.message || netErr));
+    const kind = netErr ? (masked ? 'rate_limit_or_network' : 'network') : classifyHttp(status, body);
+    lastKind = kind;
+    if (kind === 'notfound') throw new Error('해당 국가의 데이터셋을 찾을 수 없습니다. 잠시 후 다시 시도해 주세요.');
+    if (kind === 'auth') throw new Error('이 데이터셋은 현재 공개 접근이 제한되어 있습니다.');
+    if (kind === 'fatal') throw new Error(`요청 실패 (HTTP ${status}) ${(body || '').slice(0, 160)}`);
+
+    const elapsed = Date.now() - start;
+    if (elapsed >= maxWaitMs) {
+      if (lastKind === 'rate_limit' || lastKind === 'rate_limit_or_network') {
+        throw new Error('Hugging Face 요청 제한이 계속되고 있습니다. 지금까지 받은 데이터는 그대로 보관했습니다. 잠시 후 이어서 모아 주세요.');
+      }
+      if (lastKind === 'warming') throw new Error('데이터 준비가 예상보다 오래 걸립니다. 잠시 후 다시 시도해 주세요.');
+      throw new Error(netErr ? ('네트워크 오류: ' + netErr.message) : `요청 실패 (HTTP ${status})`);
+    }
+    let waitMs = Math.min(retryDelay(kind, attempt, res), Math.max(1000, maxWaitMs - elapsed));
+    if (kind === 'rate_limit' || kind === 'rate_limit_or_network') noteRateLimit(waitMs, kind);
+    else { requestRuntime.kind = kind; requestRuntime.nextRequestAt = Date.now() + waitMs; }
+    await waitWithCountdown(waitMs, { kind, status, attempt }, onWait);
+  }
+}
+function waitMessage(info) {
+  const sec = Math.max(1, Number(info?.waitSec) || 1);
+  if (info?.kind === 'rate_limit' || info?.kind === 'rate_limit_or_network') return `요청 제한을 감지했습니다 · ${sec}초 후 자동으로 이어서 진행합니다`;
+  if (info?.kind === 'warming') return `데이터를 준비하고 있습니다 · ${sec}초 후 자동 재확인합니다`;
+  if (info?.kind === 'server') return `서버가 잠시 응답하지 않습니다 · ${sec}초 후 자동 재시도합니다`;
+  return `일시적인 네트워크 오류입니다 · ${sec}초 후 자동 재시도합니다`;
+}
+
+// ---- 데이터 접근 -----------------------------------------------------
+function buildUrl(offset, length) {
+  return `${API}/rows?dataset=${encodeURIComponent(state.country.dataset)}&config=${encodeURIComponent(state.config)}` +
+    `&split=${encodeURIComponent(state.split)}&offset=${offset}&length=${length}`;
+}
+const mapRows = rows => (rows || []).map(r => (r && r.row ? r.row : r));
+const rowKey = row => row?.uuid || row?.id || row?.person_id || fnv(JSON.stringify(row));
+
+function orderColumns(cols) {
+  const clean = (cols || []).filter(c => c && !INTERNAL_COL_RE.test(c) && !LIST_DUP_RE.test(c));
+  const first = PREFERRED_ORDER.filter(c => clean.includes(c));
+  const ordered = [...first, ...clean.filter(c => !first.includes(c))];
+  return ordered.length ? ordered : [...FALLBACK_COLUMNS];
+}
+function byteLength(text) {
+  try { return new TextEncoder().encode(text).length; } catch { return Math.round(text.length * 1.6); }
+}
+async function loadSplits(dataset) {
+  try {
+    const s = await fetchJson(`${API}/splits?dataset=${encodeURIComponent(dataset)}`, {
+      maxWaitMs: 90000,
+      onWait: info => { state.progressSub = waitMessage(info); paintProgress(); },
+    });
+    const arr = (s.splits || []).map(x => ({ config: x.config, split: x.split }));
+    if (arr.length) return arr;
+  } catch (e) { if (String(e.message) === 'CANCELLED') throw e; }
+  return [{ config: 'default', split: 'train' }];
+}
+function defaultSplit(splits) {
+  return splits.find(x => x.split === 'train') || splits.find(x => /^en/i.test(x.split)) || splits[0];
+}
+function splitLabel(s) {
+  return SPLIT_INFO[s.split]?.label || (s.split === 'train' ? '기본' : s.split);
+}
+async function loadSample() {
+  state.progressSub = '표본을 읽어 크기를 재고 있습니다.';
+  paintProgress();
+  const data = await fetchJson(buildUrl(0, 5), {
+    maxWaitMs: 3 * 60 * 1000,
+    onWait: info => { state.progressSub = waitMessage(info); paintProgress(); },
+  });
+  state.total = data.num_rows_total ?? null;
+  const featureNames = (data.features || []).map(f => f.name).filter(Boolean);
+  const sample = mapRows(data.rows);
+  state.allColumns = orderColumns(featureNames.length ? featureNames : Object.keys(sample[0] || {}));
+  state.avgRowBytes = sample.length
+    ? Math.max(500, Math.round(byteLength(JSON.stringify(sample)) / sample.length))
+    : DEFAULT_ROW_BYTES;
+}
+async function loadMeta(country) {
+  state.progressText = `${country.name} 데이터를 연결하는 중`;
+  state.progressSub = '데이터셋 구성을 확인하고 있습니다.';
+  state.splits = await loadSplits(country.dataset);
+  const pick = defaultSplit(state.splits);
+  state.config = pick.config; state.split = pick.split;
+  await loadSample();
+}
+
+// ---- 수집 -----------------------------------------------------------
+function paintProgress() {
+  if (state.screen !== 'collecting' && state.screen !== 'meta') return;
+  const title = $('#progressTitle'), sub = $('#progressSub'), bar = $('#progressBar'), pct = $('#progressPct'), cnt = $('#progressCount');
+  if (title) title.textContent = state.progressText;
+  if (sub) sub.textContent = state.progressSub;
+  if (bar) bar.style.width = `${Math.min(100, state.progress)}%`;
+  if (pct) pct.textContent = `${Math.round(Math.min(100, state.progress))}%`;
+  if (cnt) cnt.textContent = state.rows.length ? `${formatN(state.rows.length)}명 보관` : '';
+}
+function clearAnalysis() {
+  state.picked = null; state.clusters = []; state.activeCluster = null; state.scatter = null;
+  state.lastQuery = ''; state.lastHints = [];
+}
+async function startCollect(append = false) {
+  if (!append) { state.rows = []; state.nextOffset = null; clearAnalysis(); }
+  const goal = Math.min(HARD_CAP, state.rows.length + state.target);
+  if (state.rows.length >= HARD_CAP) { toast(`한 번에 최대 ${formatN(HARD_CAP)}명까지 모을 수 있습니다.`); return; }
+  state.cancelRequested = false;
+  state.controller = new AbortController();
+  state.busy = true;
+  state.error = ''; state.notice = '';
+  state.progress = state.rows.length / goal * 100;
+  state.progressText = append ? '이어서 모으는 중' : '페르소나를 모으는 중';
+  state.progressSub = '조건 없이 전체에서 순서대로 가져옵니다.';
+  state.screen = 'collecting';
+  render();
+  keepAwake(true);
+
+  const onWait = info => { state.progressSub = waitMessage(info); paintProgress(); };
+  const startedWith = state.rows.length;
+  let interrupted = false;
+
+  try {
+    let offset = state.nextOffset;
+    if (offset == null) {
+      offset = 0;
+      if (state.randomStart && state.total && state.total > goal) {
+        offset = Math.floor(Math.random() * (state.total - goal));
+      }
+    }
+    const seen = new Set(state.rows.map(rowKey));
+    while (state.rows.length < goal) {
+      checkCancelled();
+      let need = Math.min(PAGE, goal - state.rows.length);
+      if (state.total != null) need = Math.min(need, Math.max(0, state.total - offset));
+      if (need <= 0) break;
+      const data = await fetchJson(buildUrl(offset, need), { maxWaitMs: SINGLE_REQUEST_MAX_WAIT_MS, onWait });
+      if (data.num_rows_total != null) state.total = data.num_rows_total;
+      const got = mapRows(data.rows);
+      for (const row of got) {
+        const key = rowKey(row);
+        if (seen.has(key)) continue;
+        seen.add(key);
+        state.rows.push(row);
+      }
+      offset += got.length;
+      state.nextOffset = offset;
+      state.progress = state.rows.length / goal * 100;
+      state.progressSub = `전체 ${state.total != null ? formatN(state.total) : '?'}명 중 ${formatN(offset)}번째까지 확인했습니다.`;
+      paintProgress();
+      if (!got.length || got.length < need) break;
+    }
+  } catch (e) {
+    interrupted = true;
+    if (String(e.message) === 'CANCELLED') {
+      state.notice = state.rows.length ? `중지했습니다. 지금까지 받은 ${formatN(state.rows.length)}명은 그대로 보관했습니다.` : '수집을 중지했습니다.';
+      state.noticeType = 'info';
+    } else {
+      state.error = e.message || String(e);
+    }
+  } finally {
+    state.busy = false;
+    state.controller = null;
+    state.cancelRequested = false;
+    keepAwake(false);
+  }
+  if (!interrupted && state.rows.length === startedWith && startedWith > 0) {
+    state.notice = '데이터셋 끝까지 모두 모았습니다. 더 가져올 사람이 없습니다.';
+    state.noticeType = 'info';
+  }
+  finishCollect(interrupted, startedWith);
+}
+function finishCollect(interrupted = false, startedWith = 0) {
+  state.filterFields = buildFieldsFromRows(state.rows);
+  pruneConditions();
+  state.previewLimit = PREVIEW_STEP;
+  if (!state.rows.length) { state.screen = 'size'; render(); return; }
+  if (state.rows.length !== startedWith) clearAnalysis();
+  state.screen = 'result';
+  if (!interrupted && !state.notice) {
+    state.notice = `${formatN(state.rows.length)}명을 모았습니다. 이제 찾고 싶은 사람을 문장으로 설명해 보세요.`;
+    state.noticeType = 'success';
+  }
+  render();
+  checkModelCache();
+}
+function cancelWork() {
+  if (!state.busy) return;
+  state.cancelRequested = true;
+  state.progressSub = '중지하는 중입니다…';
+  paintProgress();
+  paintAi();
+  state.controller?.abort();
+}
+
+// ---- 수집 데이터에서 조건 항목 만들기 --------------------------------
+function buildFieldsFromRows(rows) {
+  if (!rows.length) return [];
+  const scan = rows.length > FIELD_SCAN_ROWS ? rows.slice(0, FIELD_SCAN_ROWS) : rows;
+  const cols = state.allColumns.filter(c => !ID_COL_RE.test(c) && !INTERNAL_COL_RE.test(c) && !LIST_DUP_RE.test(c));
+  const fields = [];
+  for (const col of cols) {
+    const counts = new Map();
+    let filled = 0, numericCount = 0, longText = false, tooMany = false;
+    let min = Infinity, max = -Infinity;
+    for (const row of scan) {
+      const raw = row[col];
+      if (raw == null || raw === '') continue;
+      const s = cellText(raw);
+      if (!s) continue;
+      filled++;
+      if (s.length > LONG_TEXT_LEN) { longText = true; break; }
+      if (!tooMany) {
+        counts.set(s, (counts.get(s) || 0) + 1);
+        if (counts.size > CAT_MAX) tooMany = true;
+      }
+      if (typeof raw === 'number' || /^-?\d+(?:\.\d+)?$/.test(s)) {
+        numericCount++;
+        const n = Number(s);
+        if (n < min) min = n;
+        if (n > max) max = n;
+      }
+    }
+    if (longText || !filled) continue;
+    const isNumeric = numericCount === filled && Number.isFinite(min) && Number.isFinite(max)
+      && max > min && !/zip|postal|code/i.test(col);
+    if (isNumeric) { fields.push({ col, control: 'range', bounds: { min, max } }); continue; }
+    if (!tooMany && counts.size > 1) {
+      const entries = [...counts.entries()].sort((a, b) => b[1] - a[1] || String(a[0]).localeCompare(String(b[0]), 'ko'));
+      fields.push({ col, control: 'category', options: entries.map(e => e[0]), counts: new Map(entries) });
+    }
+  }
+  fields.sort((a, b) => {
+    const ai = DEMOGRAPHIC_PRIORITY.indexOf(a.col), bi = DEMOGRAPHIC_PRIORITY.indexOf(b.col);
+    const ap = ai < 0 ? 999 : ai, bp = bi < 0 ? 999 : bi;
+    if (ap !== bp) return ap - bp;
+    return state.allColumns.indexOf(a.col) - state.allColumns.indexOf(b.col);
+  });
+  return fields;
+}
+function pruneConditions() {
+  const valid = new Set(state.filterFields.map(f => f.col));
+  for (const col of Object.keys(state.category)) if (!valid.has(col)) delete state.category[col];
+  for (const col of Object.keys(state.ranges)) if (!valid.has(col)) delete state.ranges[col];
+}
+function activeConditionCount() {
+  let n = 0;
+  for (const vals of Object.values(state.category)) if ((vals || []).length) n++;
+  for (const r of Object.values(state.ranges)) if (r && !r.any) n++;
+  return n;
+}
+function conditionSummary(field) {
+  if (field.control === 'range') {
+    const r = state.ranges[field.col];
+    if (!r || r.any) return '상관 없음';
+    return `${formatN(r.min)} ~ ${formatN(r.max)}`;
+  }
+  const sel = state.category[field.col] || [];
+  if (!sel.length) return '상관 없음';
+  if (sel.length === 1) return prettyText(displayValue(field.col, sel[0]));
+  return `${prettyText(displayValue(field.col, sel[0]))} 외 ${sel.length - 1}`;
+}
+function resetConditions() { state.category = {}; state.ranges = {}; }
+
+/* ===================================================================
+ * 문장 속 나이 · 성별 자동 인식 (한국어 · 영어 · 일본어 · 프랑스어 · 포르투갈어 · 힌디어)
+ * AI 임베딩은 숫자에 약하므로, 명확한 나이 · 성별은 데이터 값으로 정확히 거른다.
+ * =================================================================== */
+const FR_DECADES = { vingt: 20, trent: 30, quarant: 40, cinquant: 50, soixant: 60, septant: 70 };
+function parseHints(text) {
+  const t = String(text || '').normalize('NFKC');
+  const low = t.toLowerCase();
+  let min = null, max = null;
+  const num = s => Number(s);
+  const decadeOf = d => (d >= 10 ? d : d * 10);
+  let m;
+
+  // 범위: 30~45세 · 30-40살 · 25〜34歳 · aged 30 to 40 · between 30 and 40 · entre 30 et 40 ans · 30~40대
+  if ((m = low.match(/(\d{1,2})0\s*(?:~|-|–|〜|～)\s*(\d{1,2})0\s*(?:대|代)/))) {
+    min = num(m[1]) * 10; max = num(m[2]) * 10 + 9;
+  } else if ((m = low.match(/(\d{1,3})\s*(?:세|살|歳|years?|yrs?|ans|anos|वर्ष|साल)?\s*(?:~|-|–|〜|～|to)\s*(\d{1,3})\s*(?:세|살|歳|years?|yrs?|ans|anos|वर्ष|साल)/))) {
+    min = num(m[1]); max = num(m[2]);
+  } else if ((m = low.match(/(?:between|entre)\s+(\d{1,3})\s+(?:and|et|e)\s+(\d{1,3})/))) {
+    min = num(m[1]); max = num(m[2]);
+  } else if ((m = low.match(/aged\s+(\d{1,3})\s*(?:-|–|to)\s*(\d{1,3})/))) {
+    min = num(m[1]); max = num(m[2]);
+  } else if ((m = low.match(/(\d)0\s*대\s*(초반|중반|후반)?\s*(이상|이하|미만)?/))) {
+    const d = num(m[1]) * 10;
+    if (m[2] === '초반') { min = d; max = d + 3; }
+    else if (m[2] === '중반') { min = d + 3; max = d + 6; }
+    else if (m[2] === '후반') { min = d + 6; max = d + 9; }
+    else { min = d; max = d + 9; }
+    if (m[3] === '이상') max = null;
+    if (m[3] === '이하') min = null;
+    if (m[3] === '미만') { min = null; max = d - 1; }
+  } else if ((m = low.match(/(\d)0\s*代\s*(前半|後半)?\s*(以上|以下)?/))) {
+    const d = num(m[1]) * 10;
+    if (m[2] === '前半') { min = d; max = d + 4; }
+    else if (m[2] === '後半') { min = d + 5; max = d + 9; }
+    else { min = d; max = d + 9; }
+    if (m[3] === '以上') max = null;
+    if (m[3] === '以下') min = null;
+  } else if ((m = low.match(/\b(?:in\s+(?:their|his|her)\s+)?(early|mid|late)?[\s-]*(\d)0s\b(\s*(?:and|or)\s*(?:older|over|above|up))?/))) {
+    const d = num(m[2]) * 10;
+    if (m[1] === 'early') { min = d; max = d + 3; }
+    else if (m[1] === 'mid') { min = d + 3; max = d + 6; }
+    else if (m[1] === 'late') { min = d + 6; max = d + 9; }
+    else { min = d; max = d + 9; }
+    if (m[3]) max = null;
+  } else if ((m = low.match(/casa dos (\d)0/))) {
+    min = num(m[1]) * 10; max = min + 9;
+  } else if ((m = low.match(/(vingt|trent|quarant|cinquant|soixant|septant)aine/))) {
+    min = FR_DECADES[m[1]]; max = min + 9;
+  } else {
+    // 한쪽 끝만 있는 경우
+    const lower = [
+      /(\d{1,3})\s*(?:세|살)\s*(?:이상|넘은|넘는|초과)/, /(\d{1,3})\s*歳\s*(?:以上|超)/,
+      /(?:over|above|older than|at least)\s+(\d{1,3})/, /(\d{1,3})\s*(?:\+|\s+(?:or|and)\s+(?:older|over|above|up))/,
+      /(?:plus de|au moins)\s+(\d{1,3})\s*ans/, /(?:mais de|acima de|pelo menos)\s+(\d{1,3})\s*anos/,
+      /(\d{1,3})\s*(?:वर्ष|साल)\s*से\s*(?:अधिक|ज़्यादा|ज्यादा|ऊपर)/,
+    ];
+    const upper = [
+      /(\d{1,3})\s*(?:세|살)\s*(?:이하|미만)/, /(\d{1,3})\s*歳\s*(?:以下|未満)/,
+      /(?:under|below|younger than)\s+(\d{1,3})/, /(?:moins de)\s+(\d{1,3})\s*ans/,
+      /(?:menos de|abaixo de)\s+(\d{1,3})\s*anos/, /(\d{1,3})\s*(?:वर्ष|साल)\s*से\s*कम/,
+    ];
+    for (const re of lower) { if ((m = low.match(re))) { min = num(m[1]); if (/^(over|above|older than)|초과|超/.test(m[0])) min += 1; break; } }
+    for (const re of upper) { if ((m = low.match(re))) { max = num(m[1]); if (/미만|未満|under|below|younger|moins|menos|abaixo|कम/.test(m[0])) max -= 1; break; } }
+    if (min == null && max == null) {
+      // 단일 나이: 35세 · 35살 · 35歳 · 35-year-old · 35 ans · 35 anos
+      if ((m = low.match(/(\d{1,3})\s*(?:세|살|歳|-?\s*years?[\s-]old|ans|anos)(?![\d])/))) { min = num(m[1]); max = num(m[1]); }
+    }
+  }
+  if (min != null && max != null && min > max) { const x = min; min = max; max = x; }
+  if (min != null && (min < 0 || min > 120)) min = null;
+  if (max != null && (max < 0 || max > 120)) max = null;
+
+  const hints = [];
+  if (min != null || max != null) {
+    let label;
+    if (min != null && max != null) label = min === max ? `${min}세` : `${min}~${max}세`;
+    else if (min != null) label = `${min}세 이상`;
+    else label = `${max}세 이하`;
+    hints.push({ id: 'age', label, min, max });
+  }
+  const female = /(여성|여자|여성분|女性|女の人|\bwom[ae]n\b|\bfemales?\b|\bladies\b|\bfemmes?\b|\bmulher(?:es)?\b|महिला|औरत)/i.test(t);
+  const male = /(남성|남자|男性|男の人|\bm[ae]n\b|\bmales?\b|\bhommes?\b|\bhomens?\b|\bhomem\b|पुरुष|आदमी)/i.test(t);
+  if (female !== male) hints.push({ id: 'sex', label: female ? '여성' : '남성', sex: female ? 'female' : 'male' });
+  return hints;
+}
+function rowSex(row) {
+  const v = normalizeKey(pickField(row, ['sex', 'gender']));
+  if (!v) return null;
+  if (/^(f\b|female|woman|women|여|女|femme|féminin|feminin|feminino|feminina|mulher|महिला|स्त्री)/.test(v)) return 'female';
+  if (/^(m\b|male|man\b|men\b|남|男|homme|masculin|masculino|homem|पुरुष)/.test(v)) return 'male';
+  return null;
+}
+function rowAge(row) {
+  const n = Number(cellText(row.age));
+  return Number.isFinite(n) ? n : null;
+}
+function activeHints(hints) { return hints.filter(h => !state.hintsOff.has(h.id)); }
+
+// ---- 조건 (프로필 선택 + 자동 인식) ------------------------------------
+function conditionMatchers() {
+  const cats = [];
+  for (const [col, vals] of Object.entries(state.category)) {
+    if ((vals || []).length) cats.push([col, new Set(vals)]);
+  }
+  const rngs = [];
+  for (const [col, r] of Object.entries(state.ranges)) {
+    if (r && !r.any) rngs.push([col, Number(r.min), Number(r.max)]);
+  }
+  return { cats, rngs };
+}
+function matchesConditions(row, cats, rngs) {
+  for (const [col, set] of cats) if (!set.has(cellText(row[col]))) return false;
+  for (const [col, min, max] of rngs) {
+    const n = Number(cellText(row[col]));
+    if (!Number.isFinite(n) || n < min || n > max) return false;
+  }
+  return true;
+}
+function baseRows(hints) {
+  const { cats, rngs } = conditionMatchers();
+  const age = hints.find(h => h.id === 'age');
+  const sex = hints.find(h => h.id === 'sex');
+  const sexKnown = sex && state.rows.some(r => rowSex(r) != null);
+  return state.rows.filter(row => {
+    if ((cats.length || rngs.length) && !matchesConditions(row, cats, rngs)) return false;
+    if (age) {
+      const a = rowAge(row);
+      if (a == null) return false;
+      if (age.min != null && a < age.min) return false;
+      if (age.max != null && a > age.max) return false;
+    }
+    if (sex && sexKnown && rowSex(row) !== sex.sex) return false;
+    return true;
+  });
+}
+
+// ---- 페르소나 이름 / 표시 --------------------------------------------
+function pickField(row, candidates) {
+  for (const c of candidates) { const v = cellText(row[c]).trim(); if (v) return v; }
+  return '';
+}
+function latinName(text) {
+  const words = text.split(' ');
+  const out = [];
+  for (let i = 0; i < Math.min(words.length, 5); i++) {
+    const w = words[i].replace(/[,;:.!?]+$/, '');
+    if (!w) break;
+    if (/^[A-ZÀ-ÞŁØ]/.test(w)) { out.push(w); continue; }
+    if (out.length && NAME_PARTICLES.has(w.toLowerCase()) && /^[A-ZÀ-ÞŁØ]/.test(words[i + 1] || '')) { out.push(w); continue; }
+    break;
+  }
+  return out.length >= 2 ? out.join(' ') : '';
+}
+function personaName(row) {
+  const cached = nameCache.get(row);
+  if (cached !== undefined) return cached;
+  const raw = pickField(row, ['persona', 'professional_persona', 'family_persona', 'cultural_background']);
+  let name = '';
+  if (raw) {
+    const head = raw.replace(/\s+/g, ' ').trim().slice(0, 120);
+    if (HANGUL_RE.test(head.slice(0, 22))) {
+      const m = head.match(/^([가-힣]{2,5})\s*(?:씨|님)?\s*(?:은|는|이|가|의)(?=[\s,.、]|$)/)
+        || head.match(/^([가-힣]{2,5})\s*(?:씨|님)(?=[\s,.、]|$)/)
+        || head.match(/^([가-힣]{2,5})(?=[,、])/);
+      if (m) name = m[1].replace(/([가-힣]{2,})[씨님]$/, '$1');
+    }
+    if (!name && CJK_RE.test(head.slice(0, 20))) {
+      const m = head.match(/^([^\s、。,.]{1,12}(?:\s[^\s、。,.]{1,12})?)\s*(?:は|さんは|が)/);
+      if (m) name = m[1].trim();
+    }
+    if (!name) name = latinName(head);
+  }
+  nameCache.set(row, name);
+  return name;
+}
+function personaTitle(row) {
+  return personaName(row) || prettyText(pickField(row, ['occupation', 'job', 'employment_status', 'industry'])) || '이름 없음';
+}
+function personaRole(row) {
+  const job = prettyText(pickField(row, ['occupation', 'job', 'employment_status', 'industry']));
+  return personaName(row) ? job : '';
+}
+function personaChips(row) {
+  const chips = [];
+  const sex = pickField(row, ['sex', 'gender']);
+  if (sex) chips.push(prettyText(displayValue('sex', sex)));
+  const age = pickField(row, ['age', 'age_group']);
+  if (age) chips.push(/^\d+$/.test(age) ? `${age}세` : prettyText(age));
+  const place = pickField(row, PLACE_FIELDS);
+  if (place) chips.push(prettyText(place));
+  const edu = pickField(row, ['education_level', 'education']);
+  if (edu) chips.push(prettyText(displayValue('education_level', edu)));
+  return chips.slice(0, 4);
+}
+function personaSummary(row) {
+  const raw = pickField(row, ['persona', 'professional_persona', 'cultural_background', 'career_goals_and_ambitions', 'skills_and_expertise']);
+  const text = raw.replace(/\s+/g, ' ').trim();
+  return text.length > 170 ? text.slice(0, 170) + '…' : text;
+}
+function rowColumns(sample) {
+  const keys = Object.keys(sample || {}).filter(k => !INTERNAL_COL_RE.test(k));
+  const first = PREFERRED_ORDER.filter(c => keys.includes(c));
+  return [...first, ...keys.filter(c => !first.includes(c))];
+}
+
+/* ===================================================================
+ * AI 엔진 — 웹 워커 안에서 transformers.js + multilingual-e5-small
+ * =================================================================== */
+function passageText(row) {
+  const cached = passageCache.get(row);
+  if (cached !== undefined) return cached;
+  const head = [
+    pickField(row, ['sex', 'gender']),
+    row.age != null && row.age !== '' ? `${cellText(row.age)}` : '',
+    pickField(row, ['occupation', 'job']),
+    pickField(row, PLACE_FIELDS),
+    pickField(row, ['education_level', 'education']),
+    pickField(row, ['marital_status']),
+  ].filter(Boolean).map(prettyText).join(' · ');
+  const parts = [head];
+  for (const f of PASSAGE_FIELDS) {
+    const v = cellText(row[f]).replace(/\s+/g, ' ').trim();
+    if (v) parts.push(v);
+  }
+  const text = parts.filter(Boolean).join('\n').slice(0, PASSAGE_CHARS);
+  passageCache.set(row, text);
+  return text;
+}
+function vecKey(row) {
+  const cached = vecKeyCache.get(row);
+  if (cached) return cached;
+  const id = row?.uuid || row?.id || row?.person_id || fnv(passageText(row));
+  const key = `${VEC_VERSION}|${state.country?.dataset}|${state.split}|${id}`;
+  vecKeyCache.set(row, key);
+  return key;
+}
+
+function workerCode() {
+  return [
+    "import { AutoTokenizer, AutoModel, mean_pooling, env } from '" + TJS_URL + "';",
+    "env.allowLocalModels = false;",
+    "let tok = null, model = null;",
+    "const pick = p => ({ status: p.status, file: p.file || '', loaded: p.loaded || 0, total: p.total || 0 });",
+    "self.onmessage = async (e) => {",
+    "  const m = e.data || {};",
+    "  try {",
+    "    if (m.type === 'load') {",
+    "      const cb = p => { try { self.postMessage({ type: 'progress', info: pick(p) }); } catch (_) {} };",
+    "      if (!tok) tok = await AutoTokenizer.from_pretrained(m.model, { progress_callback: cb });",
+    "      if (!model) model = await AutoModel.from_pretrained(m.model, { dtype: m.dtype, device: 'wasm', progress_callback: cb });",
+    "      self.postMessage({ type: 'ready', id: m.id });",
+    "    } else if (m.type === 'embed') {",
+    "      const inputs = tok(m.texts, { padding: true, truncation: true, max_length: m.maxLen });",
+    "      const out = await model(inputs);",
+    "      const pooled = mean_pooling(out.last_hidden_state, inputs.attention_mask).normalize(2, -1);",
+    "      const data = new Float32Array(pooled.data);",
+    "      self.postMessage({ type: 'embedded', id: m.id, dim: pooled.dims[pooled.dims.length - 1], data }, [data.buffer]);",
+    "    }",
+    "  } catch (err) {",
+    "    self.postMessage({ type: 'error', id: m.id, message: String((err && err.message) || err) });",
+    "  }",
+    "};",
+  ].join('\n');
+}
+
+const engine = { worker: null, ready: false, loadPromise: null, seq: 0, waits: new Map(), files: new Map() };
+function failEngine(err) {
+  engine.waits.forEach(w => w.reject(err));
+  engine.waits.clear();
+  try { engine.worker?.terminate(); } catch { /* noop */ }
+  engine.worker = null; engine.ready = false; engine.loadPromise = null;
+}
+function getWorker() {
+  if (engine.worker) return engine.worker;
+  if (typeof Worker === 'undefined') throw new Error('이 브라우저는 AI 실행을 지원하지 않습니다. 최신 Chrome이나 삼성 인터넷으로 열어 주세요.');
+  const url = URL.createObjectURL(new Blob([workerCode()], { type: 'text/javascript' }));
+  const w = new Worker(url, { type: 'module' });
+  w.onmessage = e => {
+    const m = e.data || {};
+    if (m.type === 'progress') { trackDownload(m.info || {}); return; }
+    const wait = engine.waits.get(m.id);
+    if (!wait) return;
+    engine.waits.delete(m.id);
+    if (m.type === 'error') wait.reject(new Error(m.message || 'AI 오류'));
+    else wait.resolve(m);
+  };
+  w.onerror = e => {
+    try { e.preventDefault(); } catch { /* noop */ }
+    failEngine(new Error('AI 엔진을 시작하지 못했습니다. 인터넷 연결을 확인하거나 최신 Chrome · 삼성 인터넷으로 열어 주세요.'));
+  };
+  engine.worker = w;
+  return w;
+}
+function callEngine(msg, transfer = []) {
+  const id = ++engine.seq;
+  return new Promise((resolve, reject) => {
+    engine.waits.set(id, { resolve, reject });
+    try { getWorker().postMessage({ ...msg, id }, transfer); }
+    catch (e) { engine.waits.delete(id); reject(e); }
+  });
+}
+function trackDownload(info) {
+  if (!info.file) return;
+  const cur = engine.files.get(info.file) || { loaded: 0, total: 0 };
+  if (info.total) cur.total = info.total;
+  if (info.loaded) cur.loaded = info.loaded;
+  if (info.status === 'done' && cur.total) cur.loaded = cur.total;
+  engine.files.set(info.file, cur);
+  let loaded = 0, total = 0;
+  engine.files.forEach(f => { loaded += f.loaded; total += f.total; });
+  state.ai.dlLoaded = loaded; state.ai.dlTotal = total;
+  paintAi();
+}
+function untilCancelled(promise) {
+  return new Promise((resolve, reject) => {
+    const signal = state.controller?.signal;
+    if (signal?.aborted) return reject(new Error('CANCELLED'));
+    const onAbort = () => reject(new Error('CANCELLED'));
+    signal?.addEventListener('abort', onAbort, { once: true });
+    promise.then(v => { signal?.removeEventListener('abort', onAbort); resolve(v); },
+      e => { signal?.removeEventListener('abort', onAbort); reject(e); });
+  });
+}
+async function ensureModel() {
+  if (engine.ready) return;
+  state.ai.phase = 'model';
+  paintAi();
+  if (!engine.loadPromise) {
+    engine.files.clear();
+    engine.loadPromise = callEngine({ type: 'load', model: MODEL_ID, dtype: MODEL_DTYPE })
+      .then(() => { engine.ready = true; state.modelCached = true; })
+      .catch(e => { engine.loadPromise = null; throw e; });
+  }
+  try {
+    await untilCancelled(engine.loadPromise);
+  } catch (e) {
+    // 내려받는 도중 중지하면 데이터 낭비를 막기 위해 엔진을 닫는다
+    if (String(e.message) === 'CANCELLED' && !engine.ready) failEngine(new Error('CANCELLED'));
+    throw e;
+  }
+}
+async function embedTexts(texts) {
+  const res = await callEngine({ type: 'embed', texts, maxLen: MAX_TOKENS });
+  const dim = res.dim, data = res.data, out = [];
+  for (let i = 0; i < texts.length; i++) out.push(data.slice(i * dim, (i + 1) * dim));
+  return out;
+}
+async function checkModelCache() {
+  if (engine.ready) { state.modelCached = true; return; }
+  try {
+    if (!('caches' in window)) return;
+    const cache = await caches.open('transformers-cache');
+    const keys = await cache.keys();
+    const has = keys.some(r => r.url.includes('multilingual-e5-small') && /\.onnx/.test(r.url));
+    if (has !== state.modelCached) { state.modelCached = has; if (state.screen === 'result') render(); }
+  } catch { /* 확인 불가 */ }
+}
+
+// ---- 분석 결과 보관 (IndexedDB) ---------------------------------------
+let idbPromise = null;
+function idb() {
+  if (idbPromise) return idbPromise;
+  idbPromise = new Promise(resolve => {
+    try {
+      if (typeof indexedDB === 'undefined') return resolve(null);
+      const req = indexedDB.open('persona-ai-finder', 1);
+      req.onupgradeneeded = () => { try { req.result.createObjectStore('vec'); } catch { /* noop */ } };
+      req.onsuccess = () => resolve(req.result);
+      req.onerror = () => resolve(null);
+      req.onblocked = () => resolve(null);
+    } catch { resolve(null); }
+  });
+  return idbPromise;
+}
+async function idbGetMany(keys) {
+  const out = new Map();
+  if (!keys.length) return out;
+  const db = await idb();
+  if (!db) return out;
+  return new Promise(resolve => {
+    try {
+      const tx = db.transaction('vec', 'readonly');
+      const store = tx.objectStore('vec');
+      for (const k of keys) {
+        const q = store.get(k);
+        q.onsuccess = () => { const v = q.result; if (v && v.length) out.set(k, v instanceof Float32Array ? v : new Float32Array(v)); };
+      }
+      tx.oncomplete = () => resolve(out);
+      tx.onerror = tx.onabort = () => resolve(out);
+    } catch { resolve(out); }
+  });
+}
+async function idbPutMany(entries) {
+  if (!entries.length) return;
+  const db = await idb();
+  if (!db) return;
+  await new Promise(resolve => {
+    try {
+      const tx = db.transaction('vec', 'readwrite');
+      const store = tx.objectStore('vec');
+      for (const [k, v] of entries) store.put(v, k);
+      tx.oncomplete = tx.onerror = tx.onabort = () => resolve();
+    } catch { resolve(); }
+  });
+}
+
+async function ensureEmbeddings() {
+  let missing = state.rows.filter(r => !vecStore.has(vecKey(r)));
+  if (!missing.length) return;
+  state.ai.phase = 'cache';
+  paintAi();
+  const cached = await idbGetMany(missing.map(vecKey));
+  cached.forEach((v, k) => vecStore.set(k, v));
+  missing = missing.filter(r => !vecStore.has(vecKey(r)));
+  if (!missing.length) return;
+
+  await ensureModel();
+  state.ai.phase = 'embed';
+  state.ai.done = 0; state.ai.todo = missing.length; state.ai.startAt = performance.now();
+  paintAi();
+  let buffer = [];
+  try {
+    for (let i = 0; i < missing.length; i += EMBED_BATCH) {
+      checkCancelled();
+      const chunk = missing.slice(i, i + EMBED_BATCH);
+      const vecs = await untilCancelled(embedTexts(chunk.map(r => 'passage: ' + passageText(r))));
+      chunk.forEach((r, j) => { const k = vecKey(r); vecStore.set(k, vecs[j]); buffer.push([k, vecs[j]]); });
+      state.ai.done += chunk.length;
+      paintAi();
+      if (buffer.length >= 256) { idbPutMany(buffer); buffer = []; }
+      await tick();
+    }
+  } finally {
+    if (buffer.length) await idbPutMany(buffer);
+  }
+}
+function analyzedCount() {
+  let n = 0;
+  for (const r of state.rows) if (vecStore.has(vecKey(r))) n++;
+  return n;
+}
+
+/* ===================================================================
+ * 골라내기 · 군집
+ * =================================================================== */
+function dot(a, b) { let s = 0; for (let i = 0; i < a.length; i++) s += a[i] * b[i]; return s; }
+function normalizeVec(v) {
+  let s = 0; for (let i = 0; i < v.length; i++) s += v[i] * v[i];
+  s = Math.sqrt(s) || 1;
+  for (let i = 0; i < v.length; i++) v[i] /= s;
+  return v;
+}
+function mulberry32(seed) {
+  return () => {
+    seed |= 0; seed = seed + 0x6D2B79F5 | 0;
+    let t = Math.imul(seed ^ seed >>> 15, 1 | seed);
+    t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t;
+    return ((t ^ t >>> 14) >>> 0) / 4294967296;
+  };
+}
+// 정규화된 벡터에 대한 구면 k-means (코사인 유사도)
+function kmeans(vecs, k, seed = 7, maxIter = 30) {
+  const n = vecs.length, dim = vecs[0].length, rand = mulberry32(seed);
+  const cents = [];
+  cents.push(Float32Array.from(vecs[Math.floor(rand() * n)]));
+  const best = new Float32Array(n).fill(-2);
+  while (cents.length < k) {
+    const c = cents[cents.length - 1];
+    let total = 0;
+    const d = new Float32Array(n);
+    for (let i = 0; i < n; i++) {
+      const s = dot(vecs[i], c);
+      if (s > best[i]) best[i] = s;
+      d[i] = Math.max(0, 1 - best[i]) ** 2;
+      total += d[i];
+    }
+    let r = rand() * total, idx = 0;
+    if (total <= 0) idx = Math.floor(rand() * n);
+    else for (; idx < n - 1; idx++) { r -= d[idx]; if (r <= 0) break; }
+    cents.push(Float32Array.from(vecs[idx]));
+  }
+  const assign = new Int32Array(n).fill(-1);
+  let score = 0;
+  for (let it = 0; it < maxIter; it++) {
+    let changed = 0; score = 0;
+    for (let i = 0; i < n; i++) {
+      let bi = 0, bs = -2;
+      for (let c = 0; c < k; c++) { const s = dot(vecs[i], cents[c]); if (s > bs) { bs = s; bi = c; } }
+      if (assign[i] !== bi) { assign[i] = bi; changed++; }
+      score += bs;
+    }
+    const sums = Array.from({ length: k }, () => new Float32Array(dim));
+    const counts = new Int32Array(k);
+    for (let i = 0; i < n; i++) { const s = sums[assign[i]]; const v = vecs[i]; for (let j = 0; j < dim; j++) s[j] += v[j]; counts[assign[i]]++; }
+    for (let c = 0; c < k; c++) {
+      if (!counts[c]) {
+        // 빈 군집: 현재 중심과 가장 먼 점으로 다시 시작
+        let far = 0, fs = 2;
+        for (let i = 0; i < n; i++) { const s = dot(vecs[i], cents[assign[i]]); if (s < fs) { fs = s; far = i; } }
+        cents[c] = Float32Array.from(vecs[far]);
+        changed++;
+      } else cents[c] = normalizeVec(sums[c]);
+    }
+    if (!changed) break;
+  }
+  return { assign, cents, score };
+}
+function bestKmeans(vecs, k) {
+  let best = null;
+  const restarts = vecs.length > 4000 ? 2 : 3;
+  for (let r = 0; r < restarts; r++) {
+    const res = kmeans(vecs, k, 7 + r * 101);
+    if (!best || res.score > best.score) best = res;
+  }
+  return best;
+}
+function silhouette(sim, assign, k) {
+  const n = assign.length;
+  let total = 0;
+  for (let i = 0; i < n; i++) {
+    const sums = new Float64Array(k), cnt = new Int32Array(k);
+    for (let j = 0; j < n; j++) { if (i === j) continue; sums[assign[j]] += 1 - sim[i * n + j]; cnt[assign[j]]++; }
+    const own = assign[i];
+    if (cnt[own] === 0) continue;
+    const a = sums[own] / cnt[own];
+    let b = Infinity;
+    for (let c = 0; c < k; c++) if (c !== own && cnt[c]) b = Math.min(b, sums[c] / cnt[c]);
+    if (!Number.isFinite(b)) continue;
+    total += (b - a) / Math.max(a, b, 1e-9);
+  }
+  return total / n;
+}
+function chooseK(vecs) {
+  const n = vecs.length;
+  if (n < 12) return 1;
+  const kMax = Math.min(8, Math.floor(n / 5));
+  const kMin = n >= 60 ? 3 : 2;
+  if (kMax < kMin) return Math.max(1, kMax);
+  const rand = mulberry32(11);
+  const idx = [...Array(n).keys()];
+  for (let i = n - 1; i > 0; i--) { const j = Math.floor(rand() * (i + 1)); [idx[i], idx[j]] = [idx[j], idx[i]]; }
+  const sample = idx.slice(0, Math.min(n, 700)).map(i => vecs[i]);
+  const m = sample.length;
+  const sim = new Float32Array(m * m);
+  for (let i = 0; i < m; i++) for (let j = i; j < m; j++) { const s = dot(sample[i], sample[j]); sim[i * m + j] = s; sim[j * m + i] = s; }
+  let bestK = kMin, bestS = -Infinity;
+  for (let k = kMin; k <= kMax; k++) {
+    const { assign } = bestKmeans(sample, k);
+    const s = silhouette(sim, assign, k);
+    if (s > bestS + 0.002) { bestS = s; bestK = k; }
+  }
+  return bestK;
+}
+
+// 군집 설명 단어 (언어별 단어 나누기)
+const segmenters = {};
+function wordsOf(text, lang) {
+  let seg = segmenters[lang];
+  if (seg === undefined) {
+    try { seg = new Intl.Segmenter(lang, { granularity: 'word' }); } catch { seg = null; }
+    segmenters[lang] = seg;
+  }
+  if (seg) {
+    const out = [];
+    for (const s of seg.segment(text)) if (s.isWordLike) out.push(s.segment);
+    return out;
+  }
+  return text.split(/[\s.,;:!?()\[\]"'“”‘’、。・「」·\-–—/]+/);
+}
+function rowTokens(row) {
+  const cached = tokenCache.get(row);
+  if (cached) return cached;
+  const lang = currentLang();
+  const text = PASSAGE_FIELDS.map(f => cellText(row[f])).join(' ').normalize('NFKC').toLowerCase();
+  const set = new Set();
+  for (let w of wordsOf(text, lang)) {
+    w = w.replace(/^[^\p{L}\p{N}]+|[^\p{L}\p{N}]+$/gu, '');
+    if (!w || /\d/.test(w)) continue;
+    if (lang === 'ko' && HANGUL_RE.test(w)) { const s = w.replace(KO_SUFFIX_RE, ''); if (s.length >= 2) w = s; }
+    if (lang === 'ja' && /^[぀-ゟ]+$/.test(w)) continue;
+    if (w.length < 2 || (/^[a-zà-ÿ]+$/.test(w) && w.length < 4)) continue;
+    if (STOPWORDS.has(w)) continue;
+    set.add(w);
+  }
+  tokenCache.set(row, set);
+  return set;
+}
+function clusterTerms(members, allRows) {
+  const N = allRows.length;
+  if (members.length === N) return [];
+  const df = new Map();
+  for (const r of allRows) for (const t of rowTokens(r)) df.set(t, (df.get(t) || 0) + 1);
+  const dfc = new Map();
+  for (const r of members) for (const t of rowTokens(r)) dfc.set(t, (dfc.get(t) || 0) + 1);
+  const nc = members.length, nr = Math.max(1, N - nc);
+  const minDf = Math.max(2, Math.ceil(nc * 0.08));
+  const scored = [];
+  for (const [t, c] of dfc) {
+    if (c < minDf) continue;
+    const all = df.get(t) || c;
+    if (all / N > 0.45) continue;   // 거의 모든 사람에게 나오는 단어는 제외
+    const pc = c / nc, pr = (all - c + 1) / (nr + 2);
+    if (pc <= pr) continue;
+    scored.push([t, pc * Math.log(pc / pr)]);
+  }
+  scored.sort((a, b) => b[1] - a[1]);
+  const out = [];
+  for (const [t] of scored) {
+    if (out.some(o => o.includes(t) || t.includes(o))) continue;
+    out.push(t);
+    if (out.length >= 6) break;
+  }
+  return out;
+}
+function topValue(rows, fields) {
+  const counts = new Map();
+  let filled = 0;
+  for (const r of rows) {
+    const v = pickField(r, fields);
+    if (!v) continue;
+    filled++;
+    counts.set(v, (counts.get(v) || 0) + 1);
+  }
+  let best = null, bc = 0;
+  counts.forEach((c, v) => { if (c > bc) { bc = c; best = v; } });
+  return best ? { value: best, share: bc / Math.max(1, filled) } : null;
+}
+function clusterProfile(rows) {
+  const parts = [];
+  let f = 0, m = 0;
+  for (const r of rows) { const s = rowSex(r); if (s === 'female') f++; else if (s === 'male') m++; }
+  if (f + m) parts.push(f >= m ? `여성 ${Math.round(f / (f + m) * 100)}%` : `남성 ${Math.round(m / (f + m) * 100)}%`);
+  const ages = rows.map(rowAge).filter(a => a != null).sort((a, b) => a - b);
+  if (ages.length) parts.push(`평균 ${Math.round(ages.reduce((s, a) => s + a, 0) / ages.length)}세`);
+  const place = topValue(rows, PLACE_FIELDS);
+  if (place && place.share >= 0.15) parts.push(`${prettyText(place.value)} ${Math.round(place.share * 100)}%`);
+  const job = topValue(rows, ['occupation', 'job']);
+  if (job && job.share >= 0.1) parts.push(`${prettyText(job.value)} ${Math.round(job.share * 100)}%`);
+  return parts.join(' · ');
+}
+// 2차원 지도 (주성분 분석)
+function pca2(vecs) {
+  const n = vecs.length, dim = vecs[0].length;
+  const mean = new Float64Array(dim);
+  for (const v of vecs) for (let j = 0; j < dim; j++) mean[j] += v[j];
+  for (let j = 0; j < dim; j++) mean[j] /= n;
+  const comps = [];
+  const rand = mulberry32(3);
+  for (let c = 0; c < 2; c++) {
+    let w = new Float64Array(dim);
+    for (let j = 0; j < dim; j++) w[j] = rand() - 0.5;
+    for (let it = 0; it < 40; it++) {
+      const next = new Float64Array(dim);
+      for (const v of vecs) {
+        let p = 0;
+        for (let j = 0; j < dim; j++) p += (v[j] - mean[j]) * w[j];
+        for (let j = 0; j < dim; j++) next[j] += p * (v[j] - mean[j]);
+      }
+      for (const prev of comps) {
+        let p = 0; for (let j = 0; j < dim; j++) p += next[j] * prev[j];
+        for (let j = 0; j < dim; j++) next[j] -= p * prev[j];
+      }
+      let s = 0; for (let j = 0; j < dim; j++) s += next[j] * next[j];
+      s = Math.sqrt(s) || 1;
+      for (let j = 0; j < dim; j++) next[j] /= s;
+      w = next;
+    }
+    comps.push(w);
+  }
+  return vecs.map(v => {
+    let x = 0, y = 0;
+    for (let j = 0; j < dim; j++) { const d = v[j] - mean[j]; x += d * comps[0][j]; y += d * comps[1][j]; }
+    return [x, y];
+  });
+}
+
+function pickTop(scored) {
+  if (state.pick !== 'auto') return scored.slice(0, Number(state.pick));
+  const n = scored.length;
+  if (!n) return [];
+  const mean = scored.reduce((s, x) => s + x.score, 0) / n;
+  const sd = Math.sqrt(scored.reduce((s, x) => s + (x.score - mean) ** 2, 0) / n) || 1e-6;
+  const cut = mean + sd;
+  let k = scored.filter(x => x.score >= cut).length;
+  k = Math.max(Math.min(AUTO_MIN, n), Math.min(AUTO_MAX, k));
+  return scored.slice(0, k);
+}
+async function clusterPicked() {
+  const picked = state.picked || [];
+  state.clusters = []; state.activeCluster = null; state.scatter = null;
+  if (picked.length < 2) { picked.forEach(p => { p.cluster = 0; }); return; }
+  const vecs = picked.map(p => vecStore.get(vecKey(p.row)));
+  state.ai.phase = 'cluster'; paintAi(); await tick();
+  let k = state.kChoice === 'auto' ? chooseK(vecs) : Math.min(Number(state.kChoice), picked.length);
+  k = Math.max(1, k);
+  await tick();
+  const { assign, cents } = k > 1 ? bestKmeans(vecs, k) : { assign: new Int32Array(picked.length), cents: [normalizeVec(vecs.reduce((s, v) => { for (let j = 0; j < v.length; j++) s[j] += v[j]; return s; }, new Float32Array(vecs[0].length)))] };
+  picked.forEach((p, i) => { p.cluster = assign[i]; });
+  const allRows = picked.map(p => p.row);
+  let clusters = cents.map((c, ci) => {
+    const idx = []; picked.forEach((p, i) => { if (assign[i] === ci) idx.push(i); });
+    if (!idx.length) return null;
+    let rep = idx[0], rs = -2;
+    for (const i of idx) { const s = dot(vecs[i], c); if (s > rs) { rs = s; rep = i; } }
+    const rows = idx.map(i => picked[i].row);
+    return { orig: ci, size: idx.length, terms: clusterTerms(rows, allRows), profile: clusterProfile(rows), rep: picked[rep].row };
+  }).filter(Boolean);
+  clusters.sort((a, b) => b.size - a.size);
+  const remap = new Map(clusters.map((c, i) => [c.orig, i]));
+  clusters.forEach((c, i) => { c.id = i; c.color = CLUSTER_COLORS[i % CLUSTER_COLORS.length]; });
+  picked.forEach(p => { p.cluster = remap.get(p.cluster) ?? 0; });
+  state.clusters = clusters;
+  await tick();
+  // 지도용 좌표 (최대 2,500명)
+  const step = Math.max(1, Math.ceil(picked.length / 2500));
+  const sampleIdx = [];
+  for (let i = 0; i < picked.length; i += step) sampleIdx.push(i);
+  const pts = pca2(sampleIdx.map(i => vecs[i]));
+  state.scatter = sampleIdx.map((i, j) => ({ x: pts[j][0], y: pts[j][1], c: picked[i].cluster, i }));
+}
+
+async function runAnalysis(mode = 'search') {
+  if (state.busy || !state.rows.length) return;
+  const query = state.query.trim();
+  if (mode === 'search' && !query) { toast('찾고 싶은 사람을 문장으로 적어 주세요.'); $('#queryInput')?.focus(); return; }
+  if (mode === 'recluster' && !state.picked) return;
+  const hints = mode === 'all' ? [] : activeHints(parseHints(query));
+  state.cancelRequested = false;
+  state.controller = new AbortController();
+  state.busy = true;
+  state.error = ''; state.notice = '';
+  state.ai.phase = ''; state.ai.done = 0; state.ai.todo = 0;
+  state.screen = 'analyzing';
+  render();
+  keepAwake(true);
+  try {
+    if (mode !== 'recluster') {
+      await ensureEmbeddings();
+      const base = baseRows(hints);
+      if (!base.length) throw new Error('NO_BASE');
+      if (mode === 'search') {
+        await ensureModel();
+        state.ai.phase = 'match'; paintAi();
+        const [qv] = await untilCancelled(embedTexts(['query: ' + query]));
+        const scored = base.map(row => ({ row, score: dot(qv, vecStore.get(vecKey(row))) })).sort((a, b) => b.score - a.score);
+        const hi = scored[0].score, lo = scored[scored.length - 1].score, span = Math.max(1e-6, hi - lo);
+        scored.forEach(s => { s.rel = Math.round((s.score - lo) / span * 100); });
+        state.picked = pickTop(scored);
+        state.lastQuery = query;
+      } else {
+        state.picked = base.map(row => ({ row, score: null, rel: null }));
+        state.lastQuery = '';
+      }
+      state.lastHints = hints;
+    }
+    checkCancelled();
+    await clusterPicked();
+    state.previewLimit = PREVIEW_STEP;
+    const n = state.picked.length, k = state.clusters.length;
+    state.notice = mode === 'search'
+      ? `모은 ${formatN(state.rows.length)}명 중 문장과 가장 가까운 ${formatN(n)}명을 골라 ${k}개 군집으로 나눴습니다.`
+      : `${formatN(n)}명을 ${k}개 군집으로 나눴습니다.`;
+    state.noticeType = 'success';
+  } catch (e) {
+    const msg = String(e?.message || e);
+    if (msg === 'CANCELLED') { state.notice = 'AI 분석을 중지했습니다. 이미 분석한 사람은 저장되어 다음에 이어서 진행됩니다.'; state.noticeType = 'info'; }
+    else if (msg === 'NO_BASE') { state.notice = '문장 속 조건(나이 · 성별)이나 프로필 조건에 맞는 사람이 없습니다. 조건을 끄거나 더 모아 보세요.'; state.noticeType = 'warn'; }
+    else state.error = `AI 분석 중 문제가 생겼습니다. ${msg}`;
+  } finally {
+    state.busy = false;
+    state.controller = null;
+    state.cancelRequested = false;
+    keepAwake(false);
+  }
+  state.screen = 'result';
+  render();
+  if (state.picked && mode !== 'recluster') requestAnimationFrame(() => $('#resultTop')?.scrollIntoView({ block: 'start' }));
+}
+
+// ---- 엑셀 / 작업 저장 -------------------------------------------------
+function conditionTextSummary() {
+  const parts = [];
+  for (const f of state.filterFields) {
+    const s = conditionSummary(f);
+    if (s !== '상관 없음') parts.push(`${fieldLabel(f.col)}: ${s}`);
+  }
+  return parts.length ? parts.join(' / ') : '없음';
+}
+function clusterName(c) { return `군집 ${c.id + 1}`; }
+function saveExcel(kind) {
+  if (typeof XLSX === 'undefined') { toast('엑셀 라이브러리를 불러오지 못했습니다.'); return; }
+  const isRaw = kind === 'raw';
+  const items = isRaw ? state.rows.map(row => ({ row })) : (state.picked || []);
+  if (!items.length) { toast('저장할 데이터가 없습니다.'); return; }
+  const cols = rowColumns(items[0].row);
+  const head = isRaw ? ['이름'] : ['이름', '관련도', '군집', '군집 특징'];
+  const aoa = [[...head, ...cols.map(fieldLabel)]];
+  items.forEach(p => {
+    const lead = [personaName(p.row)];
+    if (!isRaw) {
+      const c = state.clusters[p.cluster];
+      lead.push(p.rel ?? '', c ? clusterName(c) : '', c ? c.terms.join(', ') : '');
+    }
+    aoa.push([...lead, ...cols.map(col => (p.row[col] == null ? '' : cellText(p.row[col])))]);
+  });
+  const ws = XLSX.utils.aoa_to_sheet(aoa);
+  ws['!cols'] = [...head.map(h => ({ wch: h === '군집 특징' ? 36 : 14 })), ...cols.map(c => ({ wch: Math.min(Math.max(fieldLabel(c).length + 8, 12), 48) }))];
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'personas');
+  if (!isRaw && state.clusters.length) {
+    const cs = [['군집', '인원', '특징 단어', '프로필', '대표 인물']];
+    state.clusters.forEach(c => cs.push([clusterName(c), c.size, c.terms.join(', '), c.profile, personaTitle(c.rep)]));
+    const cws = XLSX.utils.aoa_to_sheet(cs);
+    cws['!cols'] = [{ wch: 10 }, { wch: 8 }, { wch: 40 }, { wch: 46 }, { wch: 18 }];
+    XLSX.utils.book_append_sheet(wb, cws, 'clusters');
+  }
+  const meta = [
+    ['항목', '값'],
+    ['저장 종류', isRaw ? '1차 수집 전체' : 'AI 골라내기 결과'],
+    ['국가', state.country.name],
+    ['데이터셋', state.country.dataset],
+    ['config / split', `${state.config} / ${state.split}`],
+    ['1차 수집 인원', state.rows.length],
+    ['저장 인원', items.length],
+    ['찾는 사람 (문장)', isRaw ? '해당 없음' : (state.lastQuery || '없음 (전체 군집)')],
+    ['자동 인식 조건', isRaw ? '해당 없음' : (state.lastHints.map(h => h.label).join(', ') || '없음')],
+    ['프로필 조건', isRaw ? '해당 없음' : conditionTextSummary()],
+    ['AI 모델', `${MODEL_ID} (${MODEL_DTYPE}, MIT)`],
+    ['생성 시각', new Date().toLocaleString('ko-KR')],
+  ];
+  const metaWs = XLSX.utils.aoa_to_sheet(meta);
+  metaWs['!cols'] = [{ wch: 20 }, { wch: 60 }];
+  XLSX.utils.book_append_sheet(wb, metaWs, 'meta');
+  const stamp = new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-');
+  XLSX.writeFile(wb, `Nemotron_${state.country.en}_${isRaw ? '1차전체' : 'AI결과'}_${items.length}_${stamp}.xlsx`);
+  toast(isRaw ? '1차 수집 전체를 저장했습니다.' : 'AI 결과를 저장했습니다.');
+}
+function saveProject() {
+  const project = {
+    app: 'nemotron-persona-ai-finder', version: 1, savedAt: new Date().toISOString(),
+    country: state.country.id, dataset: state.country.dataset, config: state.config, split: state.split, splits: state.splits,
+    total: state.total, avgRowBytes: state.avgRowBytes, nextOffset: state.nextOffset,
+    target: state.target, randomStart: state.randomStart,
+    category: state.category,
+    ranges: Object.fromEntries(Object.entries(state.ranges).map(([k, v]) => [k, { any: v.any, min: v.min, max: v.max }])),
+    query: state.query, pick: state.pick, kChoice: state.kChoice, hintsOff: [...state.hintsOff],
+    allColumns: state.allColumns, rows: state.rows,
+  };
+  const blob = new Blob([JSON.stringify(project)], { type: 'application/json;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `Nemotron_${state.country.en}_AI작업_${state.rows.length}.json`;
+  document.body.appendChild(a); a.click(); a.remove();
+  URL.revokeObjectURL(url);
+  toast('작업 파일을 저장했습니다.');
+}
+function openProjectFile(file) {
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = () => {
+    try {
+      const data = JSON.parse(String(reader.result || '{}'));
+      const country = COUNTRIES.find(c => c.id === data.country) || COUNTRIES.find(c => c.dataset === data.dataset);
+      if (!country) throw new Error('country');
+      state.country = country;
+      state.config = data.config || 'default';
+      state.split = data.split || 'train';
+      state.splits = Array.isArray(data.splits) && data.splits.length ? data.splits : [{ config: state.config, split: state.split }];
+      state.total = data.total ?? null;
+      state.avgRowBytes = Number(data.avgRowBytes) || DEFAULT_ROW_BYTES;
+      state.nextOffset = data.nextOffset ?? null;
+      state.target = TARGET_OPTIONS.includes(Number(data.target)) ? Number(data.target) : 1000;
+      state.randomStart = Boolean(data.randomStart);
+      state.query = data.query || data.include || '';
+      state.pick = PICK_OPTIONS.includes(data.pick) || PICK_OPTIONS.includes(Number(data.pick)) ? (data.pick === 'auto' ? 'auto' : Number(data.pick)) : 'auto';
+      state.kChoice = K_OPTIONS.includes(data.kChoice) || K_OPTIONS.includes(Number(data.kChoice)) ? (data.kChoice === 'auto' ? 'auto' : Number(data.kChoice)) : 'auto';
+      state.hintsOff = new Set(Array.isArray(data.hintsOff) ? data.hintsOff : []);
+      state.category = data.category && typeof data.category === 'object' ? data.category : {};
+      state.ranges = data.ranges && typeof data.ranges === 'object' ? data.ranges : {};
+      if (Array.isArray(data.allColumns) && data.allColumns.length) state.allColumns = data.allColumns;
+      state.rows = Array.isArray(data.rows) ? data.rows : [];
+      state.filterFields = buildFieldsFromRows(state.rows);
+      pruneConditions();
+      clearAnalysis();
+      state.previewLimit = PREVIEW_STEP;
+      state.error = '';
+      state.notice = `저장된 작업을 열었습니다 — ${country.name} · ${formatN(state.rows.length)}명. 'AI로 골라내기'를 눌러 이어서 분석하세요.`;
+      state.noticeType = 'success';
+      state.screen = state.rows.length ? 'result' : 'size';
+      render();
+      checkModelCache();
+    } catch {
+      toast('작업 파일을 열 수 없습니다.');
+    }
+  };
+  reader.readAsText(file, 'utf-8');
+}
+
+// ---- 화면 공통 --------------------------------------------------------
+const STEP_TITLES = { country: '국가 선택', size: '수집 인원', collecting: '후보 수집', result: 'AI 골라내기 · 군집', analyzing: 'AI 분석' };
+const STEP_NO = { country: 1, size: 2, collecting: 3, result: 4, analyzing: 4 };
+const FLOW = ['intro', 'country', 'size', 'result'];
+
+function screenAvailable(screen) {
+  if (screen === 'intro' || screen === 'country') return true;
+  if (screen === 'size') return !!state.country;
+  if (screen === 'result') return state.rows.length > 0;
+  return false;
+}
+function prevScreen() {
+  const i = FLOW.indexOf(state.screen);
+  if (i <= 0) return null;
+  for (let k = i - 1; k >= 0; k--) if (screenAvailable(FLOW[k])) return FLOW[k];
+  return null;
+}
+function nextScreen() {
+  const i = FLOW.indexOf(state.screen);
+  if (i < 0) return null;
+  for (let k = i + 1; k < FLOW.length; k++) if (screenAvailable(FLOW[k])) return FLOW[k];
+  return null;
+}
+
+function headerTemplate(screen) {
+  const step = STEP_NO[screen] || 1;
+  const title = STEP_TITLES[screen] || '';
+  const transient = screen === 'meta' || screen === 'collecting' || screen === 'analyzing';
+  const backTo = transient ? null : prevScreen();
+  const forwardTo = transient ? null : nextScreen();
+  const backOff = state.busy || !backTo;
+  const fwdOff = state.busy || !forwardTo;
+  return `<header class="app-header">
+    <button class="icon-button header-button" id="backButton" aria-label="이전 화면" ${backOff ? 'disabled' : ''}><i data-lucide="chevron-left"></i></button>
+    <div class="header-title"><small>Persona AI</small><strong>${esc(state.country ? state.country.flag + ' ' + state.country.name : 'Nemotron')}</strong></div>
+    <div class="header-actions">
+      <button class="icon-button header-button" id="forwardButton" aria-label="다음 화면" ${fwdOff ? 'disabled' : ''}><i data-lucide="chevron-right"></i></button>
+      <button class="icon-button header-button" id="homeButton" aria-label="처음으로" ${state.busy ? 'disabled' : ''}><i data-lucide="rotate-ccw"></i></button>
+    </div>
+  </header>
+  <section class="step-area">
+    <div class="step-meta"><span>Step ${step}</span><span>${step} / 4</span></div>
+    <h1>${esc(title)}</h1>
+    <div class="progress-track"><i style="width:${step / 4 * 100}%"></i></div>
+  </section>`;
+}
+const screenShell = (screen, content, bottom = '') =>
+  `<div class="screen fade-in">${headerTemplate(screen)}<main class="content ${bottom ? '' : 'no-bottom'}">${content}</main>` +
+  (bottom ? `<div class="bottom-bar"><div class="bottom-stack">${bottom}</div></div>` : '') + '</div>';
+
+function noticeBlock() {
+  let html = '';
+  if (state.error) html += `<div class="message message-error">${esc(state.error)}</div>`;
+  if (state.notice) html += `<div class="message message-${state.noticeType}">${esc(state.notice)}</div>`;
+  return html;
+}
+
+// ---- 화면: 인트로 -----------------------------------------------------
+function renderIntro(app) {
+  app.innerHTML = `<div class="screen api-screen fade-in">
+    <div class="hero-icon"><i data-lucide="sparkles"></i></div>
+    <h1 class="hero-title">Persona<br>AI Finder</h1>
+    <p class="hero-subtitle">6개 나라 Nemotron 페르소나를 모은 다음,<br>찾고 싶은 사람을 <b>문장으로 설명</b>하면<br>AI가 골라내고 비슷한 사람끼리 묶어 줍니다.</p>
+    <button class="btn btn-primary btn-full" id="startButton">시작하기 <i data-lucide="arrow-right"></i></button>
+    <button class="btn btn-outline btn-full" id="openButton" style="margin-top:10px"><i data-lucide="folder-open"></i> 저장한 작업 열기</button>
+    <input id="projectInput" type="file" accept="application/json,.json" hidden>
+    <p class="foot-note">AI 모델 · multilingual-e5-small (MIT) — 처음 1회 약 ${MODEL_MB}MB를 받아 휴대폰 안에서 실행합니다. 모은 데이터는 밖으로 보내지 않습니다.<br>데이터 출처 · NVIDIA Nemotron-Personas (CC BY 4.0) · 통계 기반 합성 데이터<br><a href="../">키워드 검색 버전 열기</a></p>
+  </div>`;
+  $('#startButton').onclick = () => { state.screen = 'country'; render(); };
+  $('#openButton').onclick = () => $('#projectInput').click();
+  $('#projectInput').onchange = e => openProjectFile(e.target.files?.[0]);
+}
+
+// ---- 화면: 국가 선택 --------------------------------------------------
+function renderCountry(app) {
+  const cards = COUNTRIES.map(c => `
+    <button class="country-card ${state.country?.id === c.id ? 'selected' : ''}" data-country="${c.id}">
+      <span class="country-mark">
+        <span class="country-code">${c.id.toUpperCase()}</span>
+        <span class="country-flag-emoji" role="img" aria-label="${esc(c.name)} 국기">${countryFlagIcon(c.id)}</span>
+      </span>
+      <span><h3>${esc(c.name)}</h3><p>${esc(c.dataset.replace('nvidia/', ''))} · ${esc(c.langName)}</p></span>
+      <span class="check-dot"><i data-lucide="check"></i></span>
+    </button>`).join('');
+  const content = `${noticeBlock()}
+    <div class="card card-dark">
+      <div class="eyebrow">Step 1</div>
+      <h2 class="display-title">어느 나라 사람을 찾을까요?</h2>
+      <p class="body-copy">AI가 6개 나라 말을 모두 이해합니다. 페르소나가 영어·일본어·프랑스어·포르투갈어·힌디어로 되어 있어도 <b>한국어 문장으로 찾을 수 있습니다.</b></p>
+    </div>
+    <div class="country-list">${cards}</div>
+    <p class="foot-note">각 데이터셋은 Hugging Face에 공개되어 있으며 별도 로그인 없이 사용합니다.</p>`;
+  app.innerHTML = screenShell('country', content);
+  app.querySelectorAll('[data-country]').forEach(btn => {
+    btn.onclick = () => selectCountry(COUNTRIES.find(c => c.id === btn.dataset.country));
+  });
+}
+function resetForCountry() {
+  resetConditions();
+  state.rows = []; state.filterFields = [];
+  state.nextOffset = null;
+  state.query = ''; state.hintsOff = new Set();
+  clearAnalysis();
+  state.error = ''; state.notice = '';
+  state.allColumns = [...FALLBACK_COLUMNS]; state.total = null; state.avgRowBytes = DEFAULT_ROW_BYTES;
+}
+async function selectCountry(country) {
+  if (!country) return;
+  state.country = country;
+  resetForCountry();
+  state.splits = [];
+  state.cancelRequested = false;
+  state.controller = new AbortController();
+  state.busy = true;
+  state.screen = 'meta';
+  render();
+  try {
+    await loadMeta(country);
+    state.screen = 'size';
+    state.notice = `${country.name} 데이터에 연결했습니다 — 전체 ${state.total != null ? formatN(state.total) + '명' : '규모 확인 중'}.`;
+    state.noticeType = 'success';
+  } catch (e) {
+    state.screen = 'country';
+    if (String(e.message) !== 'CANCELLED') state.error = `${country.name} 데이터를 불러오지 못했습니다. ${e.message || e}`;
+  } finally {
+    state.busy = false;
+    state.controller = null;
+    render();
+  }
+}
+async function selectSplit(index) {
+  const s = state.splits[index];
+  if (!s || state.busy || (s.split === state.split && s.config === state.config)) return;
+  if (state.rows.length && !confirm('언어판을 바꾸면 모은 데이터가 사라집니다. 계속할까요?')) return;
+  const country = state.country;
+  resetForCountry();
+  state.config = s.config; state.split = s.split;
+  state.cancelRequested = false;
+  state.controller = new AbortController();
+  state.busy = true;
+  state.progressText = `${splitLabel(s)} 데이터를 연결하는 중`;
+  state.screen = 'meta';
+  render();
+  try {
+    await loadSample();
+    state.notice = `${country.name} · ${splitLabel(s)} — 전체 ${state.total != null ? formatN(state.total) + '명' : '규모 확인 중'}.`;
+    state.noticeType = 'success';
+  } catch (e) {
+    if (String(e.message) !== 'CANCELLED') state.error = `데이터를 불러오지 못했습니다. ${e.message || e}`;
+  } finally {
+    state.busy = false;
+    state.controller = null;
+    state.screen = 'size';
+    render();
+  }
+}
+
+// ---- 화면: 연결 로딩 --------------------------------------------------
+function renderMeta(app) {
+  app.innerHTML = `<div class="screen fade-in">${headerTemplate('country')}
+    <main class="content">
+      <section class="card loading-card">
+        <div class="spinner"></div>
+        <div class="eyebrow">Connecting</div>
+        <h2 class="display-title" id="progressTitle">${esc(state.progressText || '데이터를 연결하는 중')}</h2>
+        <p class="body-copy" id="progressSub">${esc(state.progressSub || '')}</p>
+      </section>
+    </main>
+    <div class="bottom-bar"><div class="bottom-stack">
+      <button class="btn btn-outline btn-full" id="cancelButton"><i data-lucide="x"></i> 중지</button>
+    </div></div></div>`;
+  $('#cancelButton').onclick = () => { state.cancelRequested = true; state.controller?.abort(); };
+}
+
+// ---- 화면: 수집 인원 선택 ---------------------------------------------
+function renderSize(app) {
+  const cards = TARGET_OPTIONS.map(n => {
+    const { capped, bytes, seconds, aiSeconds } = estimateFor(n);
+    const heavy = n >= HEAVY_FROM;
+    const short = capped < n;
+    return `<button class="size-card ${state.target === n ? 'selected' : ''}" data-target="${n}">
+      <span>
+        <b>${formatN(n)}명</b>
+        <em>수집 ${formatDuration(seconds)} · ${formatBytes(bytes)}<br>AI 분석 ${formatDuration(aiSeconds)} (처음 1회)</em>
+        ${short ? `<span class="warn-tag">전체가 ${formatN(state.total)}명이라 이만큼만 모입니다</span>` : ''}
+        ${heavy ? '<span class="warn-tag">휴대폰에서는 오래 걸립니다</span>' : ''}
+      </span>
+      <span class="check-dot"><i data-lucide="check"></i></span>
+    </button>`;
+  }).join('');
+  const splitBlock = state.splits.length > 1 ? `
+    <h3 class="sub-heading">데이터 언어판</h3>
+    <div class="chip-row" style="margin-top:0">${state.splits.map((s, i) => `<button class="chip-btn ${s.split === state.split && s.config === state.config ? 'on' : ''}" data-split="${i}">${esc(splitLabel(s))}</button>`).join('')}</div>
+    <p class="helper">어느 언어판이든 한국어 문장으로 찾을 수 있습니다.</p>` : '';
+
+  const content = `${noticeBlock()}
+    <div class="card card-dark">
+      <div class="eyebrow">Step 2</div>
+      <h2 class="display-title">먼저 몇 명을 모을까요?</h2>
+      <p class="body-copy">조건 없이 데이터셋에서 순서대로 모은 뒤, 다음 화면에서 AI가 문장에 맞는 사람을 골라내고 군집으로 나눕니다.</p>
+      <div class="facts">
+        <div class="fact"><small>전체 규모</small><strong>${state.total != null ? formatN(state.total) : '—'}</strong></div>
+        <div class="fact"><small>1인당 크기</small><strong>${formatBytes(state.avgRowBytes)}</strong></div>
+        <div class="fact"><small>선택</small><strong>${formatN(state.target)}명</strong></div>
+      </div>
+    </div>
+    ${splitBlock}
+    <h3 class="sub-heading">수집 인원</h3>
+    <div class="size-list">${cards}</div>
+
+    <div class="message message-info" style="margin-top:18px">AI 분석은 휴대폰 안에서 한 사람씩 읽기 때문에, 처음에는 인원에 비례해 시간이 걸립니다. 한 번 분석한 사람은 브라우저에 저장되어 <b>다음부터는 바로</b> 찾을 수 있습니다. 처음에는 <b>1,000~3,000명</b>을 권합니다.</div>
+
+    <div class="switch-row">
+      <span>무작위 구간에서 모으기<em>매번 다른 사람이 나옵니다. 끄면 항상 처음부터 모읍니다.</em></span>
+      <button class="switch ${state.randomStart ? 'on' : ''}" id="randomToggle" role="switch" aria-checked="${state.randomStart}" aria-label="무작위 구간에서 모으기"></button>
+    </div>
+    <p class="helper">AI 분석 시간은 기기 성능에 따라 크게 달라지는 대략값입니다.</p>`;
+
+  const est = estimateFor(state.target);
+  const bottom = `<button class="btn btn-primary btn-full" id="collectButton"><i data-lucide="download"></i> ${formatN(est.capped)}명 모으기 · ${formatBytes(est.bytes)}</button>`;
+
+  app.innerHTML = screenShell('size', content, bottom);
+  app.querySelectorAll('[data-target]').forEach(btn => {
+    btn.onclick = () => { state.target = Number(btn.dataset.target); render(); };
+  });
+  app.querySelectorAll('[data-split]').forEach(btn => { btn.onclick = () => selectSplit(Number(btn.dataset.split)); });
+  $('#randomToggle').onclick = () => { state.randomStart = !state.randomStart; render(); };
+  $('#collectButton').onclick = () => startCollect(false);
+}
+
+// ---- 화면: 수집 진행 --------------------------------------------------
+function renderCollecting(app) {
+  const content = `<section class="card loading-card">
+      <div class="spinner"></div>
+      <div class="eyebrow">Collecting</div>
+      <h2 class="display-title" id="progressTitle">${esc(state.progressText)}</h2>
+      <p class="body-copy" id="progressSub">${esc(state.progressSub)}</p>
+      <div class="work-progress"><i id="progressBar" style="width:${Math.min(100, state.progress)}%"></i></div>
+      <div class="progress-caption"><span id="progressPct">${Math.round(Math.min(100, state.progress))}%</span><span id="progressCount">${state.rows.length ? formatN(state.rows.length) + '명 보관' : ''}</span></div>
+    </section>
+    <div class="card">
+      <div class="eyebrow">안내</div>
+      <p class="body-copy">화면을 켜 둔 채로 기다려 주세요. 요청이 잠시 막히면 자동으로 기다렸다가 이어서 모읍니다. 중지해도 그때까지 받은 사람은 그대로 남습니다.</p>
+    </div>`;
+  app.innerHTML = screenShell('collecting', content, '<button class="btn btn-outline btn-full" id="cancelButton"><i data-lucide="x"></i> 중지</button>');
+  $('#cancelButton').onclick = cancelWork;
+}
+
+// ---- 화면: AI 분석 진행 -----------------------------------------------
+const PHASES = [
+  ['model', 'AI 모델 준비'],
+  ['embed', '페르소나 읽기'],
+  ['match', '문장과 비교하기'],
+  ['cluster', '비슷한 사람끼리 묶기'],
+];
+function aiText() {
+  const a = state.ai;
+  if (state.cancelRequested) return { title: '중지하는 중', sub: '지금 처리 중인 묶음이 끝나면 멈춥니다.', pct: null };
+  if (a.phase === 'cache') return { title: '저장해 둔 분석을 불러오는 중', sub: '이미 읽은 사람은 다시 읽지 않습니다.', pct: null };
+  if (a.phase === 'model') {
+    const pct = a.dlTotal ? a.dlLoaded / a.dlTotal * 100 : null;
+    const size = a.dlTotal ? `${formatBytes(a.dlLoaded)} / ${formatBytes(a.dlTotal)}` : `약 ${MODEL_MB}MB`;
+    return {
+      title: state.modelCached ? 'AI 모델을 여는 중' : 'AI 모델을 내려받는 중',
+      sub: state.modelCached ? '저장해 둔 모델을 불러오고 있습니다.' : `처음 1회만 받습니다 · ${size}. 다음부터는 바로 시작됩니다.`,
+      pct,
+    };
+  }
+  if (a.phase === 'embed') {
+    const pct = a.todo ? a.done / a.todo * 100 : 0;
+    const elapsed = (performance.now() - a.startAt) / 1000;
+    const rate = a.done && elapsed > 0 ? a.done / elapsed : 0;
+    const left = rate ? (a.todo - a.done) / rate : 0;
+    return {
+      title: 'AI가 페르소나를 읽는 중',
+      sub: `${formatN(a.done)} / ${formatN(a.todo)}명${rate ? ` · 초당 ${rate.toFixed(1)}명 · 남은 시간 ${formatDuration(left)}` : ''}`,
+      pct,
+    };
+  }
+  if (a.phase === 'match') return { title: '문장과 비교하는 중', sub: '의미가 가까운 사람부터 순서를 매깁니다.', pct: null };
+  if (a.phase === 'cluster') return { title: '비슷한 사람끼리 묶는 중', sub: '군집 수를 정하고 특징 단어를 찾습니다.', pct: null };
+  return { title: 'AI를 준비하는 중', sub: '', pct: null };
+}
+function phaseHtml() {
+  const order = PHASES.map(p => p[0]);
+  const cur = state.ai.phase === 'cache' ? 'embed' : state.ai.phase;
+  const ci = order.indexOf(cur);
+  return PHASES.map(([id, label], i) => {
+    const cls = i < ci ? 'done' : i === ci ? 'now' : '';
+    const icon = i < ci ? 'circle-check' : i === ci ? 'loader' : 'circle';
+    return `<div class="phase ${cls}"><i data-lucide="${icon}"></i>${esc(label)}</div>`;
+  }).join('');
+}
+function paintAi() {
+  if (state.screen !== 'analyzing') return;
+  const t = aiText();
+  const title = $('#aiTitle'), sub = $('#aiSub'), bar = $('#aiBar'), wrap = $('#aiBarWrap'), phases = $('#aiPhases');
+  if (title) title.textContent = t.title;
+  if (sub) sub.textContent = t.sub;
+  if (wrap) wrap.hidden = t.pct == null;
+  if (bar && t.pct != null) bar.style.width = `${Math.min(100, t.pct)}%`;
+  if (phases) {
+    const key = state.ai.phase;
+    if (phases.dataset.phase !== key) { phases.dataset.phase = key; phases.innerHTML = phaseHtml(); renderIcons(); }
+  }
+}
+function renderAnalyzing(app) {
+  const t = aiText();
+  const content = `<section class="card loading-card">
+      <div class="spinner"></div>
+      <div class="eyebrow">AI Analyzing</div>
+      <h2 class="display-title" id="aiTitle">${esc(t.title)}</h2>
+      <p class="body-copy" id="aiSub">${esc(t.sub)}</p>
+      <div class="work-progress" id="aiBarWrap" ${t.pct == null ? 'hidden' : ''}><i id="aiBar" style="width:${Math.min(100, t.pct || 0)}%"></i></div>
+      <div class="phase-list" id="aiPhases" data-phase="${esc(state.ai.phase)}">${phaseHtml()}</div>
+    </section>
+    <div class="card">
+      <div class="eyebrow">안내</div>
+      <p class="body-copy">모든 분석은 이 휴대폰 안에서 이루어집니다. 화면을 켜 둔 채로 기다려 주세요. 중지해도 이미 읽은 사람은 저장되어 다음에 이어서 진행됩니다.</p>
+    </div>`;
+  app.innerHTML = screenShell('analyzing', content, '<button class="btn btn-outline btn-full" id="cancelButton"><i data-lucide="x"></i> 중지</button>');
+  $('#cancelButton').onclick = cancelWork;
+}
+
+// ---- 화면: 결과 · AI 골라내기 ------------------------------------------
+function filterRowHtml(field) {
+  const summary = conditionSummary(field);
+  const active = summary !== '상관 없음';
+  return `<button class="filter-row ${active ? 'active' : ''}" data-field="${esc(field.col)}">
+    <span class="fr-label">${esc(fieldLabel(field.col))}</span>
+    <span class="fr-value">${esc(summary)}</span>
+    <i data-lucide="chevron-right"></i>
+  </button>`;
+}
+function hintsHtml() {
+  const hints = parseHints(state.query);
+  if (!hints.length) return '';
+  return `<span class="hint-label">문장에서 찾은 조건</span>` + hints.map(h =>
+    `<button class="hint-chip ${state.hintsOff.has(h.id) ? 'off' : ''}" data-hint="${h.id}" aria-pressed="${!state.hintsOff.has(h.id)}">${esc(h.label)} <i data-lucide="${state.hintsOff.has(h.id) ? 'plus' : 'x'}"></i></button>`).join('');
+}
+function bindHints() {
+  document.querySelectorAll('[data-hint]').forEach(b => {
+    b.onclick = () => {
+      const id = b.dataset.hint;
+      if (state.hintsOff.has(id)) state.hintsOff.delete(id); else state.hintsOff.add(id);
+      paintHints();
+    };
+  });
+}
+function paintHints() {
+  const box = $('#hintBox');
+  if (!box) return;
+  box.innerHTML = hintsHtml();
+  bindHints();
+  renderIcons();
+}
+function personaCard(p, i) {
+  const row = p.row;
+  const role = personaRole(row);
+  const c = state.clusters[p.cluster];
+  return `<button class="persona-card" data-row="${i}">
+    <h3><span>${esc(personaTitle(row))}</span>${p.rel != null ? `<span class="score-badge">관련도 ${p.rel}</span>` : '<i data-lucide="chevron-right"></i>'}</h3>
+    ${role ? `<p class="persona-role">${esc(role)}</p>` : ''}
+    <div class="persona-meta">${c ? `<span class="cl-tag"><span class="cl-dot" style="background:${c.color}"></span>${esc(clusterName(c))}</span>` : ''}${personaChips(row).map(x => `<span class="status-chip">${esc(x)}</span>`).join('')}</div>
+    <p class="persona-summary">${esc(personaSummary(row) || '요약 정보가 없습니다. 눌러서 원본 데이터를 확인하세요.')}</p>
+  </button>`;
+}
+function clusterSection() {
+  if (!state.picked || !state.clusters.length) return '';
+  const cards = state.clusters.map(c => `
+    <button class="cluster-card ${state.activeCluster === c.id ? 'on' : ''}" data-cluster="${c.id}">
+      <div class="cluster-head"><span class="cl-dot" style="background:${c.color}"></span><b>${esc(clusterName(c))}</b><span>${formatN(c.size)}명</span></div>
+      ${c.terms.length ? `<div class="cluster-terms">${c.terms.map(t => `<span class="term">${esc(t)}</span>`).join('')}</div>` : ''}
+      ${c.profile ? `<p class="cluster-profile">${esc(c.profile)}</p>` : ''}
+      <p class="cluster-rep">대표 인물 · ${esc(personaTitle(c.rep))}${personaRole(c.rep) ? ` (${esc(personaRole(c.rep))})` : ''}</p>
+    </button>`).join('');
+  return `<h2 class="section-heading">군집</h2>
+    <p class="body-copy">의미가 비슷한 사람끼리 묶었습니다. 군집을 누르면 그 사람들만 아래에 보입니다.</p>
+    <div class="k-row">${K_OPTIONS.map(k => `<button class="k-btn ${String(state.kChoice) === String(k) ? 'on' : ''}" data-k="${k}">${k === 'auto' ? '자동' : k + '개'}</button>`).join('')}</div>
+    ${state.scatter && state.scatter.length > 2 ? `<div class="scatter-wrap"><canvas id="scatter" aria-label="군집 지도"></canvas><span class="scatter-note">점을 누르면 그 사람</span></div>` : ''}
+    <div class="cluster-list">${cards}</div>`;
+}
+function renderResult(app) {
+  const picked = state.picked;
+  const visible = picked ? (state.activeCluster == null ? picked : picked.filter(p => p.cluster === state.activeCluster)) : [];
+  const shown = visible.slice(0, state.previewLimit);
+  const analyzed = analyzedCount();
+  const allDone = analyzed === state.rows.length;
+  const status = allDone
+    ? `<span class="ai-status ok"><i data-lucide="circle-check"></i>${formatN(analyzed)}명 AI 분석 완료</span>`
+    : `<span class="ai-status"><i data-lucide="sparkles"></i>${analyzed ? `${formatN(analyzed)}명 분석됨 · ${formatN(state.rows.length - analyzed)}명 남음` : '아직 AI 분석 전'}</span>`;
+
+  const primary = state.filterFields.filter(f => DEMOGRAPHIC_PRIORITY.includes(f.col));
+  const mainList = (primary.length ? primary : state.filterFields).slice(0, 10);
+  const restList = state.filterFields.filter(f => !mainList.includes(f));
+  const condCount = activeConditionCount();
+  const conditions = state.filterFields.length ? `
+    <details class="more" ${condCount ? 'open' : ''}><summary>프로필 조건 직접 고르기${condCount ? ` (${condCount}개 적용 중)` : ' (선택)'}</summary>
+      <div class="filter-list" style="margin-top:10px">${mainList.map(filterRowHtml).join('')}</div>
+      ${restList.length ? `<details class="more"><summary>다른 조건 ${restList.length}개 더 보기</summary>
+        <div class="filter-list" style="margin-top:10px">${restList.map(filterRowHtml).join('')}</div></details>` : ''}
+    </details>` : '';
+
+  const firstDownload = !engine.ready && state.modelCached === false;
+  const resultBlock = picked ? `
+    <h2 class="section-heading" id="resultTop">${state.lastQuery ? '골라낸 사람' : '전체 군집'} · ${formatN(picked.length)}명</h2>
+    ${state.lastQuery ? `<div class="match-line">“${esc(state.lastQuery)}”<br>와 가장 가까운 <b>${formatN(picked.length)}명</b>${state.lastHints.length ? ` · ${esc(state.lastHints.map(h => h.label).join(', '))}` : ''}</div>` : ''}
+    ${clusterSection()}
+    <h2 class="section-heading">${state.activeCluster != null ? `${esc(clusterName(state.clusters[state.activeCluster]))} · ${formatN(visible.length)}명` : '사람 목록'}</h2>
+    ${state.activeCluster != null ? '<button class="btn btn-outline btn-small btn-full" id="allClusterButton" style="margin-bottom:12px">모든 군집 보기</button>' : ''}
+    <p class="helper">${state.lastQuery ? '관련도는 이번 결과 안에서 문장과 가까운 정도를 0~100으로 나타낸 값입니다. ' : ''}카드를 누르면 원본 데이터 전체를 볼 수 있습니다.</p>
+    <div class="persona-list" style="margin-top:14px">${shown.map(personaCard).join('') || '<p class="body-copy">표시할 사람이 없습니다.</p>'}</div>
+    ${visible.length > state.previewLimit ? `<button class="btn btn-outline btn-full btn-small list-more" id="moreButton">${formatN(visible.length - state.previewLimit)}명 더 보기</button>` : ''}` : '';
+
+  const content = `${noticeBlock()}
+    <div class="card card-dark">
+      <div class="eyebrow">Collected</div>
+      <h2 class="display-title">${formatN(state.rows.length)}명</h2>
+      <p class="body-copy">${esc(state.country.name)}${state.splits.length > 1 ? ' · ' + esc(splitLabel({ split: state.split })) : ''} 페르소나를 모았습니다.</p>
+      ${status}
+    </div>
+
+    <h2 class="section-heading">어떤 사람을 찾을까요?</h2>
+    <p class="body-copy">찾고 싶은 사람을 평소 말하듯 적어 주세요. AI가 뜻을 이해해서 가까운 사람을 골라냅니다.</p>
+    <textarea class="text-area" id="queryInput" style="margin-top:12px" placeholder="예: 새로운 기술을 빨리 받아들이는 30대 직장인">${esc(state.query)}</textarea>
+    <div class="hint-box" id="hintBox">${hintsHtml()}</div>
+    <div class="example-box">
+      <b>이렇게 써 보세요</b>
+      <div class="example-chips">${QUERY_EXAMPLES.map((k, i) => `<button class="example-chip" data-example="${i}">${esc(k)}</button>`).join('')}</div>
+      <p>한국어 · 영어 · 일본어 · 프랑스어 · 포르투갈어 · 힌디어 등 어떤 말로 써도 됩니다. 나이와 성별은 데이터 값으로 정확히 걸러지고, 나머지는 AI가 의미로 찾습니다.</p>
+    </div>
+
+    <h3 class="sub-heading">몇 명을 고를까요?</h3>
+    <div class="chip-row" style="margin-top:0">${PICK_OPTIONS.map(p => `<button class="chip-btn ${String(state.pick) === String(p) ? 'on' : ''}" data-pick="${p}">${p === 'auto' ? 'AI가 판단' : p + '명'}</button>`).join('')}</div>
+    <p class="helper">‘AI가 판단’은 문장과 특히 가까운 사람만 골라냅니다 (최소 ${AUTO_MIN}명 · 최대 ${AUTO_MAX}명).</p>
+    ${conditions}
+
+    ${firstDownload ? `<div class="message message-warn" style="margin-top:18px">처음 한 번은 AI 모델 <b>약 ${MODEL_MB}MB</b>를 내려받습니다. 와이파이에서 진행하길 권합니다. 받은 모델은 브라우저에 저장되어 다음부터는 바로 시작됩니다.</div>` : ''}
+    ${!allDone ? `<p class="helper">처음 분석할 때 ${formatN(state.rows.length - analyzed)}명을 읽는 데 ${formatDuration((state.rows.length - analyzed) / EMBED_RATE_GUESS)} 정도 걸립니다.</p>` : ''}
+    <div class="bottom-stack" style="margin-top:16px">
+      <button class="btn btn-ai btn-full" id="searchButton"><i data-lucide="sparkles"></i> AI로 골라내기</button>
+      <button class="btn btn-outline btn-full btn-small" id="clusterAllButton"><i data-lucide="boxes"></i> 문장 없이 ${condCount ? '조건에 맞는 사람' : '전체'}를 군집으로 나누기</button>
+    </div>
+
+    ${resultBlock}
+
+    <h2 class="section-heading">저장</h2>
+    <div class="bottom-stack">
+      <button class="btn btn-outline btn-full btn-small" id="rawExcelButton"><i data-lucide="file-spreadsheet"></i> 1차 수집 전체 엑셀 (${formatN(state.rows.length)}명)</button>
+      <div class="btn-row">
+        <button class="btn btn-outline btn-small" id="saveProjectButton"><i data-lucide="save"></i> 작업 저장</button>
+        <button class="btn btn-outline btn-small" id="openProjectButton"><i data-lucide="folder-open"></i> 작업 열기</button>
+      </div>
+    </div>
+    <input id="projectInput" type="file" accept="application/json,.json" hidden>
+    <p class="helper">작업 파일에는 모은 사람과 문장 · 조건이 들어갑니다. AI 분석 결과는 이 브라우저에 따로 저장되어 다시 열면 바로 이어집니다.</p>`;
+
+  const est = estimateFor(state.target);
+  const bottom = `<button class="btn btn-primary btn-full" id="excelButton" ${picked && picked.length ? '' : 'disabled'}><i data-lucide="file-spreadsheet"></i> ${picked ? `AI 결과 엑셀 저장 (${formatN(picked.length)}명)` : 'AI 결과 엑셀 저장'}</button>
+    <button class="btn btn-outline btn-full btn-small" id="moreCollectButton" ${state.rows.length >= HARD_CAP ? 'disabled' : ''}><i data-lucide="plus"></i> ${formatN(state.target)}명 더 모으기 · ${formatDuration(est.seconds)}</button>`;
+
+  app.innerHTML = screenShell('result', content, bottom);
+
+  const input = $('#queryInput');
+  input.oninput = e => { state.query = e.target.value; paintHints(); };
+  bindHints();
+  app.querySelectorAll('[data-example]').forEach(b => {
+    b.onclick = () => { state.query = QUERY_EXAMPLES[Number(b.dataset.example)]; input.value = state.query; state.hintsOff.clear(); paintHints(); };
+  });
+  app.querySelectorAll('[data-pick]').forEach(b => {
+    b.onclick = () => { state.pick = b.dataset.pick === 'auto' ? 'auto' : Number(b.dataset.pick); render(); };
+  });
+  app.querySelectorAll('[data-field]').forEach(btn => {
+    btn.onclick = () => openFieldSheet(state.filterFields.find(f => f.col === btn.dataset.field));
+  });
+  $('#searchButton').onclick = () => runAnalysis('search');
+  $('#clusterAllButton').onclick = () => runAnalysis('all');
+  app.querySelectorAll('[data-k]').forEach(b => {
+    b.onclick = () => {
+      const v = b.dataset.k === 'auto' ? 'auto' : Number(b.dataset.k);
+      if (String(v) === String(state.kChoice)) return;
+      state.kChoice = v;
+      runAnalysis('recluster');
+    };
+  });
+  app.querySelectorAll('[data-cluster]').forEach(b => {
+    b.onclick = () => {
+      const id = Number(b.dataset.cluster);
+      state.activeCluster = state.activeCluster === id ? null : id;
+      state.previewLimit = PREVIEW_STEP;
+      render();
+    };
+  });
+  const allBtn = $('#allClusterButton');
+  if (allBtn) allBtn.onclick = () => { state.activeCluster = null; state.previewLimit = PREVIEW_STEP; render(); };
+  app.querySelectorAll('[data-row]').forEach(b => { b.onclick = () => openRowSheet(visible[Number(b.dataset.row)]?.row); });
+  const more = $('#moreButton');
+  if (more) more.onclick = () => { state.previewLimit += PREVIEW_STEP; render(); };
+  $('#excelButton').onclick = () => saveExcel('final');
+  $('#rawExcelButton').onclick = () => saveExcel('raw');
+  $('#moreCollectButton').onclick = () => startCollect(true);
+  $('#saveProjectButton').onclick = saveProject;
+  $('#openProjectButton').onclick = () => $('#projectInput').click();
+  $('#projectInput').onchange = e => openProjectFile(e.target.files?.[0]);
+  drawScatter();
+}
+
+// ---- 군집 지도 -----------------------------------------------------------
+function drawScatter() {
+  const canvas = $('#scatter');
+  if (!canvas || !state.scatter) return;
+  const pts = state.scatter;
+  const draw = () => {
+    const w = canvas.clientWidth || 380, h = canvas.clientHeight || 280;
+    const dpr = Math.min(3, window.devicePixelRatio || 1);
+    canvas.width = Math.round(w * dpr); canvas.height = Math.round(h * dpr);
+    const ctx = canvas.getContext && canvas.getContext('2d');
+    if (!ctx) return;
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.clearRect(0, 0, w, h);
+    let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+    for (const p of pts) { if (p.x < minX) minX = p.x; if (p.x > maxX) maxX = p.x; if (p.y < minY) minY = p.y; if (p.y > maxY) maxY = p.y; }
+    const pad = 16, sx = (w - pad * 2) / Math.max(1e-6, maxX - minX), sy = (h - pad * 2) / Math.max(1e-6, maxY - minY);
+    const r = pts.length > 1200 ? 2.4 : pts.length > 300 ? 3.4 : 4.6;
+    canvas._map = [];
+    for (const dim of [true, false]) {
+      for (const p of pts) {
+        const active = state.activeCluster == null || p.c === state.activeCluster;
+        if (dim === active) continue;
+        const x = pad + (p.x - minX) * sx, y = pad + (p.y - minY) * sy;
+        ctx.globalAlpha = active ? 0.85 : 0.12;
+        ctx.fillStyle = CLUSTER_COLORS[p.c % CLUSTER_COLORS.length];
+        ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2); ctx.fill();
+        if (active) canvas._map.push([x, y, p.i]);
+      }
+    }
+    ctx.globalAlpha = 1;
+  };
+  draw();
+  canvas.onclick = e => {
+    const rect = canvas.getBoundingClientRect();
+    const x = e.clientX - rect.left, y = e.clientY - rect.top;
+    let best = null, bd = 18 * 18;
+    for (const [px, py, i] of canvas._map || []) { const d = (px - x) ** 2 + (py - y) ** 2; if (d < bd) { bd = d; best = i; } }
+    if (best != null) openRowSheet(state.picked[best]?.row);
+  };
+}
+window.addEventListener('resize', () => { if (state.screen === 'result') drawScatter(); });
+
+// ---- 바텀시트 ---------------------------------------------------------
+function closeSheet() {
+  const modal = $('#modal');
+  modal.hidden = true;
+  modal.innerHTML = '';
+}
+function openFieldSheet(field) {
+  if (!field) return;
+  if (field.control === 'range') return openRangeSheet(field);
+  const selected = new Set(state.category[field.col] || []);
+  const modal = $('#modal');
+  modal.hidden = false;
+  const listHtml = options => options.map(opt => `
+    <button class="opt-line ${selected.has(opt) ? 'on' : ''}" data-opt="${esc(opt)}" role="checkbox" aria-checked="${selected.has(opt)}">
+      <span class="opt-text">${esc(prettyText(displayValue(field.col, opt)))}</span>
+      <span class="opt-count">${formatN(field.counts.get(opt) || 0)}</span>
+      <span class="opt-mark"><i data-lucide="check"></i></span>
+    </button>`).join('');
+  modal.innerHTML = `<div class="modal-backdrop" id="sheetBackdrop"><div class="modal-sheet" role="dialog" aria-modal="true">
+    <div class="modal-head">
+      <h2>${esc(fieldLabel(field.col))}</h2>
+      <button class="icon-button" id="sheetClose" aria-label="닫기"><i data-lucide="x"></i></button>
+    </div>
+    ${field.options.length > 12 ? '<input class="text-input" id="sheetSearch" placeholder="검색" style="margin-top:12px">' : ''}
+    <div class="modal-body" id="sheetList">${listHtml(field.options)}</div>
+    <div class="modal-foot">
+      <button class="btn btn-outline btn-small" id="sheetClear">상관 없음</button>
+      <button class="btn btn-primary btn-small" id="sheetApply">적용</button>
+    </div>
+  </div></div>`;
+  const list = $('#sheetList');
+  const bind = () => list.querySelectorAll('[data-opt]').forEach(btn => {
+    btn.onclick = () => {
+      const value = btn.dataset.opt;
+      if (selected.has(value)) { selected.delete(value); btn.classList.remove('on'); }
+      else { selected.add(value); btn.classList.add('on'); }
+      btn.setAttribute('aria-checked', String(selected.has(value)));
+    };
+  });
+  bind();
+  const search = $('#sheetSearch');
+  if (search) {
+    search.oninput = () => {
+      const q = normText(search.value);
+      const filtered = q ? field.options.filter(o => normText(displayValue(field.col, o)).includes(q) || normText(o).includes(q)) : field.options;
+      list.innerHTML = filtered.length ? listHtml(filtered) : '<p class="body-copy" style="padding:20px 4px">검색 결과가 없습니다.</p>';
+      bind();
+      renderIcons();
+    };
+  }
+  $('#sheetClose').onclick = closeSheet;
+  $('#sheetBackdrop').onclick = e => { if (e.target.id === 'sheetBackdrop') closeSheet(); };
+  $('#sheetClear').onclick = () => { delete state.category[field.col]; closeSheet(); conditionsChanged(); };
+  $('#sheetApply').onclick = () => {
+    if (selected.size) state.category[field.col] = [...selected];
+    else delete state.category[field.col];
+    closeSheet();
+    conditionsChanged();
+  };
+  renderIcons();
+}
+function conditionsChanged() {
+  if (state.picked) {
+    state.notice = '프로필 조건이 바뀌었습니다. 다시 골라내려면 ‘AI로 골라내기’를 눌러 주세요.';
+    state.noticeType = 'info';
+  }
+  render();
+}
+function readNumber(id, fallback) {
+  const el = $('#' + id);
+  const raw = el ? String(el.value ?? '').trim() : '';
+  if (!raw) return fallback;
+  const n = Number(raw.replace(/[^\d.\-]/g, ''));
+  return Number.isFinite(n) ? n : fallback;
+}
+function openRangeSheet(field) {
+  const b = field.bounds;
+  const cur = state.ranges[field.col] || { any: true, min: b.min, max: b.max };
+  const modal = $('#modal');
+  modal.hidden = false;
+  modal.innerHTML = `<div class="modal-backdrop" id="sheetBackdrop"><div class="modal-sheet" role="dialog" aria-modal="true">
+    <div class="modal-head">
+      <h2>${esc(fieldLabel(field.col))}</h2>
+      <button class="icon-button" id="sheetClose" aria-label="닫기"><i data-lucide="x"></i></button>
+    </div>
+    <div class="modal-body">
+      <p class="body-copy">모은 데이터에서는 <b>${esc(formatN(b.min))} ~ ${esc(formatN(b.max))}</b> 사이입니다. 한쪽만 채워도 됩니다.</p>
+      <div class="range-row">
+        <input class="text-input" id="rangeMin" type="text" inputmode="numeric" autocomplete="off" value="${esc(cur.min ?? b.min)}" aria-label="최소값">
+        <span>~</span>
+        <input class="text-input" id="rangeMax" type="text" inputmode="numeric" autocomplete="off" value="${esc(cur.max ?? b.max)}" aria-label="최대값">
+      </div>
+      <p class="helper">비워 두면 그쪽 끝값이 자동으로 들어갑니다.</p>
+    </div>
+    <div class="modal-foot">
+      <button class="btn btn-outline btn-small" id="sheetClear">상관 없음</button>
+      <button class="btn btn-primary btn-small" id="sheetApply">적용</button>
+    </div>
+  </div></div>`;
+  $('#sheetClose').onclick = closeSheet;
+  $('#sheetBackdrop').onclick = e => { if (e.target.id === 'sheetBackdrop') closeSheet(); };
+  $('#sheetClear').onclick = () => { delete state.ranges[field.col]; closeSheet(); conditionsChanged(); };
+  $('#sheetApply').onclick = () => {
+    let min = readNumber('rangeMin', b.min);
+    let max = readNumber('rangeMax', b.max);
+    if (min > max) { const t = min; min = max; max = t; }
+    min = Math.min(Math.max(min, b.min), b.max);
+    max = Math.min(Math.max(max, b.min), b.max);
+    if (min <= b.min && max >= b.max) delete state.ranges[field.col];
+    else state.ranges[field.col] = { any: false, min, max };
+    closeSheet();
+    conditionsChanged();
+  };
+  renderIcons();
+}
+function openRowSheet(row) {
+  if (!row) return;
+  const cols = rowColumns(row);
+  const body = cols.map(c => {
+    const v = cellText(row[c]).trim();
+    if (!v) return '';
+    return `<div class="raw-field"><b>${esc(fieldLabel(c))}</b><span>${esc(v)}</span></div>`;
+  }).join('');
+  const role = personaRole(row);
+  const modal = $('#modal');
+  modal.hidden = false;
+  modal.innerHTML = `<div class="modal-backdrop" id="sheetBackdrop"><div class="modal-sheet" role="dialog" aria-modal="true">
+    <div class="modal-head">
+      <h2>${esc(personaTitle(row))}</h2>
+      <button class="icon-button" id="sheetClose" aria-label="닫기"><i data-lucide="x"></i></button>
+    </div>
+    <div class="modal-body">
+      ${role ? `<p class="persona-role" style="margin-bottom:12px">${esc(role)}</p>` : ''}
+      ${body || '<p class="body-copy">표시할 내용이 없습니다.</p>'}
+    </div>
+  </div></div>`;
+  $('#sheetClose').onclick = closeSheet;
+  $('#sheetBackdrop').onclick = e => { if (e.target.id === 'sheetBackdrop') closeSheet(); };
+  renderIcons();
+}
+
+// ---- 라우팅 · 화면 상태 유지 -------------------------------------------
+function goBack() {
+  if (state.busy) return;
+  const target = prevScreen();
+  if (!target) return;
+  closeSheet();
+  state.screen = target;
+  state.error = '';
+  render();
+}
+function goForward() {
+  if (state.busy) return;
+  const target = nextScreen();
+  if (!target) return;
+  closeSheet();
+  state.screen = target;
+  state.error = '';
+  render();
+}
+function goHome() {
+  if (state.busy) return;
+  if (state.rows.length && !confirm('처음으로 돌아가면 모은 데이터가 사라집니다. 계속할까요?')) return;
+  closeSheet();
+  state.country = null;
+  resetForCountry();
+  state.splits = [];
+  state.screen = 'intro';
+  render();
+}
+
+let lastScreen = null;
+const scrollMemory = Object.create(null);
+function currentScrollY() {
+  return window.scrollY || window.pageYOffset || document.documentElement.scrollTop || 0;
+}
+function captureView() {
+  const active = document.activeElement;
+  const editable = active && (active.tagName === 'INPUT' || active.tagName === 'TEXTAREA');
+  return {
+    scrollY: currentScrollY(),
+    focusId: editable && active.id ? active.id : null,
+    selStart: editable ? active.selectionStart : null,
+    selEnd: editable ? active.selectionEnd : null,
+  };
+}
+function restoreView(view) {
+  try { window.scrollTo(0, view.scrollY); } catch { /* noop */ }
+  if (!view.focusId) return;
+  const el = $('#' + view.focusId);
+  if (!el) return;
+  try {
+    el.focus({ preventScroll: true });
+    if (view.selStart != null && typeof el.setSelectionRange === 'function') {
+      el.setSelectionRange(view.selStart, view.selEnd);
+    }
+  } catch { /* noop */ }
+}
+function render() {
+  const app = $('#app');
+  const screen = state.screen;
+  const sameScreen = lastScreen === screen;
+  const view = sameScreen ? captureView() : null;
+  if (!sameScreen && lastScreen) scrollMemory[lastScreen] = currentScrollY();
+
+  if (screen === 'intro') renderIntro(app);
+  else if (screen === 'country') renderCountry(app);
+  else if (screen === 'meta') renderMeta(app);
+  else if (screen === 'size') renderSize(app);
+  else if (screen === 'collecting') renderCollecting(app);
+  else if (screen === 'analyzing') renderAnalyzing(app);
+  else if (screen === 'result') renderResult(app);
+
+  const back = $('#backButton'), fwd = $('#forwardButton'), home = $('#homeButton');
+  if (back) back.onclick = goBack;
+  if (fwd) fwd.onclick = goForward;
+  if (home) home.onclick = goHome;
+
+  lastScreen = screen;
+  if (view) restoreView(view);
+  else { try { window.scrollTo(0, scrollMemory[screen] || 0); } catch { /* noop */ } }
+  renderIcons();
+}
+
+window.addEventListener('beforeunload', e => {
+  if (state.rows.length) { e.preventDefault(); e.returnValue = ''; }
+});
+document.addEventListener('keydown', e => { if (e.key === 'Escape') closeSheet(); });
+
+/* 당겨서 새로고침 막기 */
+(function blockPullToRefresh() {
+  let startY = 0;
+  document.addEventListener('touchstart', e => {
+    if (e.touches.length === 1) startY = e.touches[0].clientY;
+  }, { passive: true });
+  document.addEventListener('touchmove', e => {
+    if (e.touches.length !== 1) return;
+    const dy = e.touches[0].clientY - startY;
+    if (dy <= 0) return;
+    for (let el = e.target; el && el !== document.body && el !== document.documentElement; el = el.parentElement) {
+      if (el.scrollTop > 0) {
+        const oy = getComputedStyle(el).overflowY;
+        if (oy === 'auto' || oy === 'scroll') return;
+      }
+    }
+    const pageTop = (document.scrollingElement || document.documentElement).scrollTop <= 0;
+    if (pageTop && e.cancelable) e.preventDefault();
+  }, { passive: false });
+})();
+
+// 테스트용 진입점 (화면에는 영향 없음)
+window.__personaAI = { state, parseHints, kmeans, chooseK, rowTokens, clusterTerms, passageText, workerCode };
+
+render();
+})();
+</script>
+</body>
+</html>
