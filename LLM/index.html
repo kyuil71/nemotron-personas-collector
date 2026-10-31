@@ -4,6 +4,9 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#0f172a">
+<!-- CPU 여러 코어를 쓰기 위한 보조 스크립트 (처음 한 번 페이지가 자동으로 다시 열림) -->
+<script>window.coi = { coepCredentialless: () => true, quiet: true };</script>
+<script src="coi-serviceworker.js"></script>
 <title>Persona AI Finder</title>
   <!-- 홈 화면에 추가해 실행하면 주소창 없이 전체 화면으로 열림 -->
   <link rel="manifest" href="manifest.webmanifest" />
@@ -320,14 +323,16 @@ const SPLIT_INFO = {
 
 // ---- AI 모델 ----------------------------------------------------------
 const MODEL_ID = 'Xenova/multilingual-e5-small';          // MIT · 100개 이상 언어
-const MODEL_DTYPE = 'q8';                                   // 8비트 양자화 (약 130MB)
+const MODEL_DTYPE = 'q8';                                   // CPU용 8비트 (약 130MB)
 const MODEL_MB = 130;
+const GPU_MODEL_MB = 240;                                   // GPU용 16비트 (약 240MB)
 const TJS_URL = 'https://cdn.jsdelivr.net/npm/@huggingface/transformers@4.3.2/dist/transformers.min.js';
-const MAX_TOKENS = 192;
-const EMBED_BATCH = 16;
+const MAX_TOKENS = 128;
+const EMBED_BATCH_CPU = 16;
+const EMBED_BATCH_GPU = 48;
 const PASSAGE_CHARS = 900;
-const VEC_VERSION = `${MODEL_ID}|${MODEL_DTYPE}|${MAX_TOKENS}|p1`;
-const EMBED_RATE_GUESS = 15;   // 명/초 (휴대폰 기준 대략값)
+const VEC_VERSION = `${MODEL_ID}|${MAX_TOKENS}|p2`;
+const EMBED_RATE_GUESS = 25;   // 명/초 (휴대폰 기준 대략값)
 
 const PICK_OPTIONS = ['auto', 30, 50, 100, 200, 500];
 const K_OPTIONS = ['auto', 2, 3, 4, 5, 6, 7, 8];
@@ -1194,22 +1199,52 @@ function workerCode() {
   return [
     "import { AutoTokenizer, AutoModel, mean_pooling, env } from '" + TJS_URL + "';",
     "env.allowLocalModels = false;",
-    "let tok = null, model = null;",
+    "let tok = null, model = null, info = null;",
+    "const hc = (self.navigator && self.navigator.hardwareConcurrency) || 4;",
+    "const threads = self.crossOriginIsolated ? Math.max(1, Math.min(4, hc)) : 1;",
+    "try { env.backends.onnx.wasm.numThreads = threads; } catch (_) {}",
     "const pick = p => ({ status: p.status, file: p.file || '', loaded: p.loaded || 0, total: p.total || 0 });",
+    "async function embed(texts, maxLen) {",
+    "  const inputs = tok(texts, { padding: true, truncation: true, max_length: maxLen });",
+    "  const out = await model(inputs);",
+    "  let h = out.last_hidden_state;",
+    "  if (h.type !== 'float32') h = h.to('float32');",
+    "  const pooled = mean_pooling(h, inputs.attention_mask).normalize(2, -1);",
+    "  return { dim: pooled.dims[pooled.dims.length - 1], data: new Float32Array(pooled.data) };",
+    "}",
+    "async function tryGpu(name, cb) {",
+    "  if (!self.navigator || !self.navigator.gpu) return false;",
+    "  try {",
+    "    const adapter = await self.navigator.gpu.requestAdapter();",
+    "    if (!adapter || !adapter.features.has('shader-f16')) return false;",
+    "    model = await AutoModel.from_pretrained(name, { dtype: 'fp16', device: 'webgpu', progress_callback: cb });",
+    "    const t = await embed(['passage: 새로운 기술을 좋아하는 사람', 'passage: a person who loves cooking'], 32);",
+    "    let s = 0; for (const v of t.data) { if (!Number.isFinite(v)) throw new Error('bad'); s += Math.abs(v); }",
+    "    if (s < 1e-3) throw new Error('bad');",
+    "    info = { device: 'webgpu', dtype: 'fp16', threads: 0 };",
+    "    return true;",
+    "  } catch (e) {",
+    "    try { if (model && model.dispose) await model.dispose(); } catch (_) {}",
+    "    model = null;",
+    "    return false;",
+    "  }",
+    "}",
     "self.onmessage = async (e) => {",
     "  const m = e.data || {};",
     "  try {",
     "    if (m.type === 'load') {",
     "      const cb = p => { try { self.postMessage({ type: 'progress', info: pick(p) }); } catch (_) {} };",
     "      if (!tok) tok = await AutoTokenizer.from_pretrained(m.model, { progress_callback: cb });",
-    "      if (!model) model = await AutoModel.from_pretrained(m.model, { dtype: m.dtype, device: 'wasm', progress_callback: cb });",
-    "      self.postMessage({ type: 'ready', id: m.id });",
+    "      if (!model && m.preferGpu) { self.postMessage({ type: 'stage', stage: 'gpu' }); await tryGpu(m.model, cb); }",
+    "      if (!model) {",
+    "        self.postMessage({ type: 'stage', stage: 'cpu' });",
+    "        model = await AutoModel.from_pretrained(m.model, { dtype: m.dtype, device: 'wasm', progress_callback: cb });",
+    "        info = { device: 'wasm', dtype: m.dtype, threads };",
+    "      }",
+    "      self.postMessage({ type: 'ready', id: m.id, info });",
     "    } else if (m.type === 'embed') {",
-    "      const inputs = tok(m.texts, { padding: true, truncation: true, max_length: m.maxLen });",
-    "      const out = await model(inputs);",
-    "      const pooled = mean_pooling(out.last_hidden_state, inputs.attention_mask).normalize(2, -1);",
-    "      const data = new Float32Array(pooled.data);",
-    "      self.postMessage({ type: 'embedded', id: m.id, dim: pooled.dims[pooled.dims.length - 1], data }, [data.buffer]);",
+    "      const r = await embed(m.texts, m.maxLen);",
+    "      self.postMessage({ type: 'embedded', id: m.id, dim: r.dim, data: r.data }, [r.data.buffer]);",
     "    }",
     "  } catch (err) {",
     "    self.postMessage({ type: 'error', id: m.id, message: String((err && err.message) || err) });",
@@ -1218,7 +1253,13 @@ function workerCode() {
   ].join('\n');
 }
 
-const engine = { worker: null, ready: false, loadPromise: null, seq: 0, waits: new Map(), files: new Map() };
+const engine = { worker: null, ready: false, loadPromise: null, seq: 0, waits: new Map(), files: new Map(), info: null, stage: '' };
+function engineLabel() {
+  const i = engine.info;
+  if (!i) return '';
+  return i.device === 'webgpu' ? 'GPU 사용 중' : `CPU ${i.threads || 1}코어 사용 중`;
+}
+const embedBatch = () => (engine.info?.device === 'webgpu' ? EMBED_BATCH_GPU : EMBED_BATCH_CPU);
 function failEngine(err) {
   engine.waits.forEach(w => w.reject(err));
   engine.waits.clear();
@@ -1233,6 +1274,7 @@ function getWorker() {
   w.onmessage = e => {
     const m = e.data || {};
     if (m.type === 'progress') { trackDownload(m.info || {}); return; }
+    if (m.type === 'stage') { engine.stage = m.stage; paintAi(); return; }
     const wait = engine.waits.get(m.id);
     if (!wait) return;
     engine.waits.delete(m.id);
@@ -1282,8 +1324,8 @@ async function ensureModel() {
   paintAi();
   if (!engine.loadPromise) {
     engine.files.clear();
-    engine.loadPromise = callEngine({ type: 'load', model: MODEL_ID, dtype: MODEL_DTYPE })
-      .then(() => { engine.ready = true; state.modelCached = true; })
+    engine.loadPromise = callEngine({ type: 'load', model: MODEL_ID, dtype: MODEL_DTYPE, preferGpu: true })
+      .then(res => { engine.ready = true; engine.info = res.info || null; state.modelCached = true; })
       .catch(e => { engine.loadPromise = null; throw e; });
   }
   try {
@@ -1535,9 +1577,10 @@ async function ensureEmbeddings() {
   paintAi();
   let buffer = [];
   try {
-    for (let i = 0; i < missing.length; i += EMBED_BATCH) {
+    const batch = embedBatch();
+    for (let i = 0; i < missing.length; i += batch) {
       checkCancelled();
-      const chunk = missing.slice(i, i + EMBED_BATCH);
+      const chunk = missing.slice(i, i + batch);
       const vecs = await untilCancelled(embedTexts(chunk.map(r => 'passage: ' + passageText(r))));
       chunk.forEach((r, j) => { const k = vecKey(r); vecStore.set(k, vecs[j]); buffer.push([k, vecs[j]]); });
       state.ai.done += chunk.length;
@@ -2323,10 +2366,12 @@ function aiText() {
   if (a.phase === 'cache') return { title: '저장해 둔 분석을 불러오는 중', sub: '이미 읽은 사람은 다시 읽지 않습니다.', pct: null };
   if (a.phase === 'model') {
     const pct = a.dlTotal ? a.dlLoaded / a.dlTotal * 100 : null;
-    const size = a.dlTotal ? `${formatBytes(a.dlLoaded)} / ${formatBytes(a.dlTotal)}` : `약 ${MODEL_MB}MB`;
+    const gpu = engine.stage === 'gpu';
+    const size = a.dlTotal ? `${formatBytes(a.dlLoaded)} / ${formatBytes(a.dlTotal)}` : `약 ${gpu ? GPU_MODEL_MB : MODEL_MB}MB`;
+    const where = gpu ? 'GPU로 실행할 수 있는지 확인하고 있습니다. ' : engine.stage === 'cpu' ? 'CPU로 실행합니다. ' : '';
     return {
       title: state.modelCached ? 'AI 모델을 여는 중' : 'AI 모델을 내려받는 중',
-      sub: state.modelCached ? '저장해 둔 모델을 불러오고 있습니다.' : `처음 1회만 받습니다 · ${size}. 다음부터는 바로 시작됩니다.`,
+      sub: state.modelCached ? `${where}저장해 둔 모델을 불러오고 있습니다.` : `${where}처음 1회만 받습니다 · ${size}. 다음부터는 바로 시작됩니다.`,
       pct,
     };
   }
@@ -2337,7 +2382,7 @@ function aiText() {
     const left = rate ? (a.todo - a.done) / rate : 0;
     return {
       title: 'AI가 페르소나를 읽는 중',
-      sub: `${formatN(a.done)} / ${formatN(a.todo)}명${rate ? ` · 초당 ${rate.toFixed(1)}명 · 남은 시간 ${formatDuration(left)}` : ''}`,
+      sub: `${formatN(a.done)} / ${formatN(a.todo)}명${rate ? ` · 초당 ${rate.toFixed(1)}명 · 남은 시간 ${formatDuration(left)}` : ''}${engineLabel() ? ` · ${engineLabel()}` : ''}`,
       pct,
     };
   }
@@ -2451,7 +2496,7 @@ function renderResult(app) {
   const analyzed = analyzedCount();
   const allDone = analyzed === state.rows.length;
   const status = allDone
-    ? `<span class="ai-status ok"><i data-lucide="circle-check"></i>${formatN(analyzed)}명 AI 분석 완료</span>`
+    ? `<span class="ai-status ok"><i data-lucide="circle-check"></i>${formatN(analyzed)}명 AI 분석 완료${engineLabel() ? ' · ' + engineLabel().replace(' 중', '') : ''}</span>`
     : `<span class="ai-status"><i data-lucide="sparkles"></i>${analyzed ? `${formatN(analyzed)}명 분석됨 · ${formatN(state.rows.length - analyzed)}명 남음` : '아직 AI 분석 전'}</span>`;
 
   const primary = state.filterFields.filter(f => DEMOGRAPHIC_PRIORITY.includes(f.col));
@@ -2499,7 +2544,7 @@ function renderResult(app) {
     <p class="helper">‘AI가 판단’은 문장과 특히 가까운 사람만 골라냅니다 (최소 ${AUTO_MIN}명 · 최대 ${AUTO_MAX}명).</p>
     ${conditions}
 
-    ${firstDownload ? `<div class="message message-warn" style="margin-top:18px">처음 한 번은 AI 모델 <b>약 ${MODEL_MB}MB</b>를 내려받습니다. 와이파이에서 진행하길 권합니다. 받은 모델은 브라우저에 저장되어 다음부터는 바로 시작됩니다.</div>` : ''}
+    ${firstDownload ? `<div class="message message-warn" style="margin-top:18px">처음 한 번은 AI 모델 <b>약 ${MODEL_MB}MB</b>(GPU를 쓸 수 있는 기기는 약 ${GPU_MODEL_MB}MB)를 내려받습니다. 와이파이에서 진행하길 권합니다. 받은 모델은 브라우저에 저장되어 다음부터는 바로 시작됩니다.</div>` : ''}
     ${!allDone ? `<p class="helper">처음 분석할 때 ${formatN(state.rows.length - analyzed)}명을 읽는 데 ${formatDuration((state.rows.length - analyzed) / EMBED_RATE_GUESS)} 정도 걸립니다.</p>` : ''}
     <div class="bottom-stack" style="margin-top:16px">
       <button class="btn btn-ai btn-full" id="searchButton"><i data-lucide="sparkles"></i> AI로 골라내기</button>
